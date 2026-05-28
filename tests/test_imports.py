@@ -6,7 +6,6 @@ PACKAGES = [
     "tree_sitter",
     "watchdog",
     "fastmcp",
-    "radon",
     "leidenalg",
     "igraph",
     "jinja2",

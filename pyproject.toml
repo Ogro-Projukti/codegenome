@@ -33,7 +33,6 @@ dependencies = [
   "tree-sitter-rust==0.21.2",
   "watchdog",
   "fastmcp",
-  "radon",
   "leidenalg",
   "python-igraph",
   "click",
