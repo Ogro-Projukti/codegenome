@@ -62,6 +62,7 @@ class CodeGenomeTUI(App):
         with Horizontal(id="commands-container"):
             yield Button("Analyze", id="btn-analyze", variant="primary")
             yield Button("Export", id="btn-export", variant="primary")
+            yield Button("Generate AI Rules", id="btn-rules", variant="primary")
             yield Button("Start MCP", id="btn-mcp", variant="success")
             yield Button("Live Evolve", id="btn-evolve", variant="success")
             yield Button("Stop Active Processes", id="btn-stop", variant="error")
@@ -93,6 +94,8 @@ class CodeGenomeTUI(App):
             self.run_command(["codegenome", "analyze", workspace])
         elif button_id == "btn-export":
             self.run_command(["codegenome", "export", "--format", "json", "--path", workspace])
+        elif button_id == "btn-rules":
+            self.run_command(["codegenome", "rules", "--client", "all", workspace])
         elif button_id == "btn-mcp":
             self.run_command(["codegenome", "mcp-start", "--path", workspace], is_background=True)
         elif button_id == "btn-evolve":
