@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codegenome | Map Your Codebase Like a Digital Brain</title>
+  <meta name="description" content="CodeGenome is an open-source, real-time codebase analyzer that maps your software architecture as a living connectome. Stop OOM crashes and eliminate architectural debt.">
+  <meta name="keywords" content="CodeGenome, codebase intelligence, static analysis, graph database, tree-sitter, AI agent, software architecture, tech debt, open-source, PyPI">
+  <meta name="author" content="Ogro Projukti">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://github.com/Ogro-Projukti/codegenome">
+  <meta property="og:title" content="Codegenome | Map Your Codebase Like a Digital Brain">
+  <meta property="og:description" content="CodeGenome is an open-source, real-time codebase analyzer that maps your software architecture as a living connectome.">
+  <meta property="og:image" content="logo.png">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary">
+  <meta property="twitter:url" content="https://github.com/Ogro-Projukti/codegenome">
+  <meta property="twitter:title" content="Codegenome | Map Your Codebase Like a Digital Brain">
+  <meta property="twitter:description" content="CodeGenome is an open-source, real-time codebase analyzer that maps your software architecture as a living connectome.">
+  <meta property="twitter:image" content="logo.png">
+  <link rel="icon" type="image/png" href="logo.png">
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Ambient background elements -->
+  <div class="ambient-bg"></div>
+  <div class="grid-overlay"></div>
+  <canvas id="bioCanvas"></canvas>
+
+  <main class="container">
+    <header class="header">
+      <div class="header-logo">
+        <a href="/" class="logo-link">
+          <img src="logo.png" alt="Codegenome Logo" class="logo-img">
+          <h2 class="logo-text">CODE<br>GENOME</h2>
+        </a>
+      </div>
+      <div class="header-right">
+        <nav class="header-nav" aria-label="Main Navigation">
+          <a href="https://github.com/Ogro-Projukti/codegenome" target="_blank" class="nav-link">
+            <span class="nav-text">Docs</span>
+            <span class="dither-blink"></span>
+          </a>
+          <a href="https://www.ogroprojukti.com" target="_blank" class="nav-link">
+            <span class="nav-text">Company</span>
+            <span class="dither-blink"></span>
+          </a>
+        </nav>
+
+      </div>
+    </header>
+
+    <section class="hero-section fade-in">
+      <div class="hero-content">
+        <span class="hero-badge">Open Source &bull; MIT License</span>
+        <h1 class="hero-title">The Connectome of Code:<br>Mapping the Digital Brain.</h1>
+        <div class="hero-subtitle">
+          <span class="text-highlight">As code evolves, codebase monitoring should evolve too.</span>
+        </div>
+        <p class="hero-desc">
+          Your codebase isn't a static document &mdash; it's an evolving digital brain. CodeGenome treats code like a living connectome, monitoring its neuroplasticity in real time without slowing down your system.
+        </p>
+        <div class="installation-box">
+          <div class="install-step">
+            <div class="install-header">
+              <span class="step-label">1. Install</span>
+              <button class="copy-btn" data-copy="pip install codegenome" aria-label="Copy pip install command">Copy</button>
+            </div>
+            <code class="install-code">pip install codegenome</code>
+          </div>
+          <div class="install-step">
+            <div class="install-header">
+              <span class="step-label">2. Analyze & Explore</span>
+              <button class="copy-btn" data-copy="codegenome analyze . && codegenome tui" aria-label="Copy execution command">Copy</button>
+            </div>
+            <code class="install-code">codegenome analyze . && codegenome tui</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="demo-section fade-in">
+      <div class="demo-header">
+        <span class="demo-title">Live Architecture TUI</span>
+      </div>
+      <div class="terminal-window">
+        <div class="terminal-bar">
+          <div class="dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <span class="terminal-title">Codegenome TUI</span>
+        </div>
+        <div class="terminal-body" id="typewriter">
+          <span class="dither-blink"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="features-section fade-in">
+      <div class="section-heading">
+        <span class="section-title">Features</span>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <h3 class="feature-title">Nodes are Neurons</h3>
+          <p class="feature-desc">Your functions and classes are processing units. Import statements and function calls act as digital synapses linking them together.</p>
+        </div>
+        <div class="feature-card">
+          <h3 class="feature-title">Graph Decomposition</h3>
+          <p class="feature-desc">Splits computation into cellular Micro-Graphs and abstract Macro-Graphs, mapping the modular hierarchy without Out-of-Memory crashes.</p>
+        </div>
+        <div class="feature-card">
+          <h3 class="feature-title">Digital Neuroplasticity</h3>
+          <p class="feature-desc">By hooking into native OS kernels for passive listening, graph deltas are pushed instantly down a WebSocket connection the millisecond a file is modified.</p>
+        </div>
+        <div class="feature-card">
+          <h3 class="feature-title">Agentic MRI Scan</h3>
+          <p class="feature-desc">Audit the autonomous AI agent storm. Instantly spot if an agent is hallucinating circular dependencies or spinning up unlinked orphan modules.</p>
+        </div>
+        <div class="feature-card">
+          <h3 class="feature-title">Data-Driven Refactoring</h3>
+          <p class="feature-desc">Don't guess. Highlight your "God Nodes" (hyper-connected components) using empirical Degree-Based Analysis and Betweenness Centrality.</p>
+        </div>
+        <div class="feature-card">
+          <h3 class="feature-title">Warp Speed Onboarding</h3>
+          <p class="feature-desc">Ditch the unindexed documentation. Interactively zoom into modules, trace critical execution pathways, and understand the macro-system in minutes.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer fade-in">
+      <div class="footer-col">
+        <span class="footer-text">Codegenome</span>
+        <span class="footer-version">v1.0.0</span>
+      </div>
+      <div class="footer-col align-right">
+        <a href="https://www.ogroprojukti.com" target="_blank" class="footer-link">Ogro Projukti &nearr;</a>
+        <span class="footer-copy">MIT License &middot; 2026</span>
+      </div>
+    </footer>
+  </main>
+
+  <script src="main.js"></script>
+</body>
+</html>
