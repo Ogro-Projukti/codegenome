@@ -1,4 +1,9 @@
-"""Tree-sitter based multi-language source parser."""
+"""Tree-sitter based multi-language source parser.
+
+This module provides classes and functions to parse source code files
+across multiple languages (Python, JS/TS, Go, Rust) and extract symbols,
+imports, function calls, and inheritance relationships.
+"""
 
 from __future__ import annotations
 
@@ -27,6 +32,17 @@ EXTENSIONS: dict[str, str] = {
 
 @dataclass(frozen=True)
 class ParsedSymbol:
+    """Represents a parsed symbol (class, function, method) from source code.
+
+    Attributes:
+        name (str): The local name of the symbol.
+        kind (str): The kind of symbol (e.g., 'class', 'function', 'method').
+        start_line (int): The starting line number (1-indexed).
+        end_line (int): The ending line number (1-indexed).
+        docstring (str | None): The extracted docstring or leading comment.
+        complexity (int | None): Cyclomatic complexity score, if calculated.
+        qualified_name (str | None): Fully qualified name, including parent scopes.
+    """
     name: str
     kind: str
     start_line: int
@@ -38,6 +54,14 @@ class ParsedSymbol:
 
 @dataclass(frozen=True)
 class ParsedImport:
+    """Represents an import statement in source code.
+
+    Attributes:
+        module (str): The name of the module being imported.
+        names (list[str]): The specific symbols imported from the module.
+        start_line (int): The line number where the import occurs.
+        is_relative (bool): Whether the import is a relative import.
+    """
     module: str
     names: list[str]
     start_line: int
@@ -46,6 +70,13 @@ class ParsedImport:
 
 @dataclass(frozen=True)
 class ParsedInheritance:
+    """Represents an inheritance relationship extracted from source code.
+
+    Attributes:
+        class_name (str): The name of the derived class.
+        base (str): The name of the base class or interface.
+        line (int): The line number where the inheritance is declared.
+    """
     class_name: str
     base: str
     line: int
@@ -53,6 +84,13 @@ class ParsedInheritance:
 
 @dataclass(frozen=True)
 class ParsedCall:
+    """Represents a function or method call extracted from source code.
+
+    Attributes:
+        caller (str): The fully qualified name of the calling function/method.
+        callee (str): The name or path of the called function/method.
+        line (int): The line number where the call occurs.
+    """
     caller: str
     callee: str
     line: int
@@ -60,6 +98,17 @@ class ParsedCall:
 
 @dataclass
 class ParseResult:
+    """Aggregates all parsed information for a single source file.
+
+    Attributes:
+        path (str): File path.
+        language (str): Language identifier.
+        symbols (list[ParsedSymbol]): Extracted symbols.
+        imports (list[ParsedImport]): Extracted imports.
+        inheritance (list[ParsedInheritance]): Extracted inheritance relationships.
+        calls (list[ParsedCall]): Extracted function calls.
+        errors (list[str]): Any errors encountered during parsing.
+    """
     path: str
     language: str
     symbols: list[ParsedSymbol] = field(default_factory=list)
@@ -172,9 +221,14 @@ def _load_languages() -> dict[str, Language]:
 
 
 class SourceParser:
-    """Parse source files and extract symbols, imports, calls, and inheritance."""
+    """Parse source files and extract symbols, imports, calls, and inheritance.
+
+    This class manages tree-sitter language parsers and coordinates the
+    extraction process for supported languages.
+    """
 
     def __init__(self) -> None:
+        """Initialize the SourceParser and load available language grammars."""
         self._languages = _load_languages()
         self._parsers: dict[str, Parser] = {}
         for key, language in self._languages.items():
@@ -183,9 +237,26 @@ class SourceParser:
             self._parsers[key] = parser
 
     def detect_language(self, path: Path | str) -> str | None:
+        """Detect the programming language based on file extension.
+
+        Args:
+            path (Path | str): File path.
+
+        Returns:
+            str | None: The language identifier if detected, else None.
+        """
         return EXTENSIONS.get(Path(path).suffix.lower())
 
     def parse_file(self, path: Path | str, content: bytes | None = None) -> ParseResult | None:
+        """Parse a source file and extract structural information.
+
+        Args:
+            path (Path | str): Path to the source file.
+            content (bytes | None): Optional pre-read bytes content.
+
+        Returns:
+            ParseResult | None: The parsed data, or None if language is unsupported.
+        """
         file_path = Path(path)
         language = self.detect_language(file_path)
         if language is None:
@@ -203,6 +274,16 @@ class SourceParser:
         return self.parse_bytes(content, language, str(file_path))
 
     def parse_bytes(self, content: bytes, language: str, path: str = "<string>") -> ParseResult:
+        """Parse raw bytes content for a specific language.
+
+        Args:
+            content (bytes): Source code bytes.
+            language (str): Target language identifier.
+            path (str): File path for reference in the result. Defaults to "<string>".
+
+        Returns:
+            ParseResult: Extracted data and any parse errors.
+        """
         result = ParseResult(path=path, language=language)
         parser = self._parsers.get(language)
         if parser is None:

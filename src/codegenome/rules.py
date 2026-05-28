@@ -16,6 +16,14 @@ except ImportError:
 
 @dataclass(frozen=True)
 class RuleTarget:
+    """Target configuration for generating AI rules.
+    
+    Attributes:
+        key (str): The internal identifier for the rule target.
+        label (str): The human-readable name of the target.
+        output_path (Path): The path where the rule file will be written.
+        template_name (str): The name of the template file to use.
+    """
     key: str
     label: str
     output_path: Path
@@ -23,6 +31,14 @@ class RuleTarget:
 
 
 def rule_targets(workspace: Path | None = None) -> list[RuleTarget]:
+    """Get the supported rule generation targets.
+
+    Args:
+        workspace (Path | None, optional): The workspace directory. Defaults to the current working directory.
+
+    Returns:
+        list[RuleTarget]: A list of rule target configurations.
+    """
     workspace = workspace or Path.cwd()
 
     return [
@@ -54,7 +70,17 @@ def rule_targets(workspace: Path | None = None) -> list[RuleTarget]:
 
 
 def load_template(template_name: str) -> str:
-    """Load a rule template from the package resources."""
+    """Load a rule template from the package resources.
+
+    Args:
+        template_name (str): The filename of the template to load.
+
+    Returns:
+        str: The content of the loaded template.
+
+    Raises:
+        FileNotFoundError: If the specified template cannot be found.
+    """
     template_path = files("codegenome.templates.rules").joinpath(template_name)
     if not template_path.is_file():
         raise FileNotFoundError(f"Template not found: {template_name}")
@@ -62,7 +88,12 @@ def load_template(template_name: str) -> str:
 
 
 def write_rule(path: Path, content: str) -> None:
-    """Write rule content to the given path, creating parent directories if needed."""
+    """Write rule content to the given path, creating parent directories if needed.
+
+    Args:
+        path (Path): The destination file path.
+        content (str): The text content to write.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
@@ -72,7 +103,16 @@ def generate_rules_for_target(
     port: int,
     dry_run: bool = False,
 ) -> Path:
-    """Generate and write rules for a specific target."""
+    """Generate and write rules for a specific target.
+
+    Args:
+        target (RuleTarget): The target configuration to generate rules for.
+        port (int): The MCP server port to interpolate into the template.
+        dry_run (bool, optional): If True, do not actually write the file. Defaults to False.
+
+    Returns:
+        Path: The path where the rule was (or would be) written.
+    """
     template_content = load_template(target.template_name)
     
     # Substitute placeholders
@@ -92,6 +132,15 @@ def generate_rules(
 ) -> list[tuple[str, Path]]:
     """Generate rules for the selected clients. 
     If 'all' is in selected_clients, generates for all supported clients.
+
+    Args:
+        selected_clients (list[str] | None, optional): List of client keys to generate rules for. Defaults to None.
+        port (int, optional): The MCP server port. Defaults to 7331.
+        workspace (Path | None, optional): The workspace directory. Defaults to None.
+        dry_run (bool, optional): If True, do not actually write the files. Defaults to False.
+
+    Returns:
+        list[tuple[str, Path]]: A list of tuples containing the target label and output path.
     """
     targets = rule_targets(workspace)
     

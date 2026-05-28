@@ -12,16 +12,37 @@ from codegenome.scanner import FileRecord, ScanResult
 
 
 def file_node_id(path: str) -> str:
+    """Generate a unique node ID for a file based on its path.
+
+    Args:
+        path (str): The file path.
+
+    Returns:
+        str: The generated node ID.
+    """
     return f"file:{path}"
 
 
 def symbol_node_id(path: str, qualified_name: str) -> str:
+    """Generate a unique node ID for a symbol based on its path and qualified name.
+
+    Args:
+        path (str): The file path containing the symbol.
+        qualified_name (str): The fully qualified name of the symbol.
+
+    Returns:
+        str: The generated node ID.
+    """
     return f"symbol:{path}:{qualified_name}"
 
 
 @dataclass
 class GraphBuilder:
-    """Build and incrementally update a codebase dependency graph."""
+    """Build and incrementally update a codebase dependency graph.
+
+    Attributes:
+        graph (Graph): The underlying graph instance being built.
+    """
 
     graph: Graph = field(default_factory=lambda: create_graph("igraph"))
 
@@ -30,6 +51,16 @@ class GraphBuilder:
         scan: ScanResult,
         parses: dict[str, ParseResult],
     ) -> tuple[Graph, dict[str, set[str]], dict[str, set[str]]]:
+        """Build a new graph from a fresh scan and parse results.
+
+        Args:
+            scan (ScanResult): The result of the workspace scan containing file records.
+            parses (dict[str, ParseResult]): Dictionary mapping file paths to their parse results.
+
+        Returns:
+            tuple[Graph, dict[str, set[str]], dict[str, set[str]]]: A tuple containing the built graph,
+                a dictionary of provided symbols per file, and a dictionary of consumed symbols per file.
+        """
         self.graph.clear()
         now = time.time()
         provides: dict[str, set[str]] = {}
@@ -47,6 +78,16 @@ class GraphBuilder:
         scan: ScanResult,
         parses: dict[str, ParseResult],
     ) -> tuple[Graph, dict[str, set[str]], dict[str, set[str]]]:
+        """Update an existing graph incrementally based on new scan and parse results.
+
+        Args:
+            scan (ScanResult): The incremental scan result containing added, modified, and deleted files.
+            parses (dict[str, ParseResult]): Dictionary mapping modified/added file paths to parse results.
+
+        Returns:
+            tuple[Graph, dict[str, set[str]], dict[str, set[str]]]: A tuple containing the updated graph,
+                a dictionary of provided symbols for updated files, and a dictionary of consumed symbols.
+        """
         now = time.time()
 
         provides: dict[str, set[str]] = {}
@@ -258,12 +299,28 @@ class GraphBuilder:
         return suffix_matches[0] if suffix_matches else None
 
     def file_metadata(self, path: str) -> dict[str, Any] | None:
+        """Retrieve metadata attributes for a specific file node in the graph.
+
+        Args:
+            path (str): The file path to lookup.
+
+        Returns:
+            dict[str, Any] | None: The node attributes if found, otherwise None.
+        """
         node_id = file_node_id(path)
         if not self.graph.has_node(node_id):
             return None
         return self.graph.get_node(node_id)
 
     def symbol_count(self, path: str | None = None) -> int:
+        """Count the number of symbol nodes in the graph, optionally filtered by file path.
+
+        Args:
+            path (str | None, optional): The file path to filter by. Defaults to None.
+
+        Returns:
+            int: The total number of symbol nodes matching the criteria.
+        """
         return sum(
             1
             for _, attrs in self.graph.iter_nodes()

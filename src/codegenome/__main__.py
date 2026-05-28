@@ -15,6 +15,15 @@ LOG = logging.getLogger("codegenome")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse command line arguments for the Watcher CLI.
+
+    Args:
+        argv (list[str] | None, optional): List of command line arguments. Defaults to None,
+            in which case sys.argv is used.
+
+    Returns:
+        argparse.Namespace: The parsed command line arguments.
+    """
     parser = argparse.ArgumentParser(description="Watcher CLI — local codebase knowledge graph")
     parser.add_argument(
         "--workspace",
@@ -129,6 +138,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def run_timeline_query(args: argparse.Namespace) -> int:
+    """Execute timeline and snapshot queries on the graph store.
+
+    Args:
+        args (argparse.Namespace): The parsed command line arguments containing the query options.
+
+    Returns:
+        int: Exit code, 0 for success, 1 for failure.
+    """
     from codegenome.graph_store import GraphStore, GraphStoreError
 
     workspace = Path(args.workspace).resolve()
@@ -169,6 +186,14 @@ def run_timeline_query(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Main entry point for the codegenome Watcher CLI.
+
+    Args:
+        argv (list[str] | None, optional): List of command line arguments. Defaults to None.
+
+    Returns:
+        int: Exit code for the CLI process.
+    """
     if argv is None:
         argv = sys.argv[1:]
     if argv and argv[0] == "--run-mcp-server":

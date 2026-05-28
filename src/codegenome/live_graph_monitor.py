@@ -27,6 +27,12 @@ class LiveGraphMonitor:
         engine: WatcherEngine,
         poll_interval_seconds: float,
     ) -> None:
+        """Initialize the LiveGraphMonitor.
+
+        Args:
+            engine (WatcherEngine): The engine used for checking and rebuilding the graph.
+            poll_interval_seconds (float): Interval in seconds between polls.
+        """
         self._engine = engine
         self._poll_interval_seconds = max(1.0, float(poll_interval_seconds))
         self._scanner = WorkspaceMetricsScanner(engine.workspace)
@@ -36,6 +42,7 @@ class LiveGraphMonitor:
         self._rebuild_lock = threading.Lock()
 
     def start(self) -> None:
+        """Start polling the workspace metrics in a background daemon thread."""
         self._previous = self._scanner.scan()
         LOG.info(
             "Live graph monitor started (interval=%ss, files=%s, lines=%s)",
@@ -51,16 +58,19 @@ class LiveGraphMonitor:
         self._thread.start()
 
     def stop(self) -> None:
+        """Stop the polling thread and wait for it to exit."""
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=self._poll_interval_seconds + 5.0)
             self._thread = None
 
     def _poll_loop(self) -> None:
+        """Internal loop that polls workspace metrics until stopped."""
         while not self._stop.wait(self._poll_interval_seconds):
             self._poll_once()
 
     def _poll_once(self) -> None:
+        """Perform a single poll of workspace metrics and trigger rebuild if grown."""
         current = self._scanner.scan()
         previous = self._previous
         if previous is None:

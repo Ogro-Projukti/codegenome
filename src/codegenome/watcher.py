@@ -33,6 +33,8 @@ DEFAULT_EXPORT_FORMATS = ("json", "html", "markdown")
 
 @dataclass
 class WatcherConfig:
+    """Configuration for WatcherEngine."""
+
     workspace: Path
     db_path: Path | None = None
     export_dir: Path | None = None
@@ -48,6 +50,8 @@ class WatcherConfig:
 
 @dataclass
 class BuildResult:
+    """Container for the output of a WatcherEngine build or update."""
+
     graph: nx.DiGraph
     report: IntelligenceReport
     snapshot_id: int | None
@@ -55,7 +59,15 @@ class BuildResult:
 
 
 class _RebuildHandler(FileSystemEventHandler):
+    """File system event handler to trigger incremental rebuilds with debouncing."""
+
     def __init__(self, engine: WatcherEngine, debounce_seconds: float) -> None:
+        """Initialize the _RebuildHandler.
+
+        Args:
+            engine (WatcherEngine): The engine to invoke rebuilds on.
+            debounce_seconds (float): Delay in seconds before triggering a rebuild.
+        """
         self._engine = engine
         self._debounce_seconds = debounce_seconds
         self._timer: threading.Timer | None = None
@@ -100,6 +112,12 @@ class _RebuildHandler(FileSystemEventHandler):
 class SurgicalUpdateHandler(FileSystemEventHandler):
     """Surgically update the graph on individual file changes."""
     def __init__(self, engine: WatcherEngine, live_server=None) -> None:
+        """Initialize the SurgicalUpdateHandler.
+
+        Args:
+            engine (WatcherEngine): The engine performing graph updates.
+            live_server (LiveGraphServer | None, optional): Server for real-time broadcasts. Defaults to None.
+        """
         self._engine = engine
         self._live_server = live_server
         self._lock = threading.Lock()
@@ -151,6 +169,11 @@ class WatcherEngine:
     """Coordinate scanning, graph building, exports, watching, and MCP startup."""
 
     def __init__(self, config: WatcherConfig) -> None:
+        """Initialize the WatcherEngine.
+
+        Args:
+            config (WatcherConfig): The configuration defining paths and options.
+        """
         self.config = config
         self.workspace = config.workspace.resolve()
         self.genome_dir = self.workspace / ".genome"
@@ -179,6 +202,14 @@ class WatcherEngine:
         self._loaded_existing_graph = self._load_existing_graph()
 
     def build(self, *, full: bool = False) -> BuildResult:
+        """Build or rebuild the graph from source files.
+
+        Args:
+            full (bool, optional): Force a full rebuild instead of incremental. Defaults to False.
+
+        Returns:
+            BuildResult: The result of the build process.
+        """
         incremental = not full and self._loaded_existing_graph
         scan = self.scanner.scan(incremental=incremental)
         parses = self._parse_scan(scan)
@@ -223,9 +254,24 @@ class WatcherEngine:
         )
 
     def rebuild_incremental(self) -> BuildResult:
+        """Perform an incremental rebuild of the graph.
+
+        Returns:
+            BuildResult: The result of the incremental rebuild.
+        """
         return self.build(full=False)
 
     def surgical_update(self, abs_path: str, rel_path: str, event_type: str) -> BuildResult | None:
+        """Perform a surgical update on the graph for a single file change.
+
+        Args:
+            abs_path (str): The absolute path of the changed file.
+            rel_path (str): The relative path of the changed file from the workspace.
+            event_type (str): The type of file event (e.g., 'created', 'modified', 'deleted').
+
+        Returns:
+            BuildResult | None: The result of the update, or None if skipped.
+        """
         if not self._loaded_existing_graph:
             LOG.warning("Cannot surgical update without existing graph. Rebuilding incremental...")
             return self.rebuild_incremental()
@@ -309,6 +355,7 @@ class WatcherEngine:
             graph.set_node_attr(proxy_id, "is_broken", True)
 
     def watch(self) -> None:
+        """Start watching the workspace for file changes to trigger rebuilds."""
         handler = _RebuildHandler(self, self.config.watch_debounce_seconds)
         self._observer = Observer()
         self._observer.schedule(handler, str(self.workspace), recursive=True)
@@ -323,12 +370,14 @@ class WatcherEngine:
             self.stop_watch()
 
     def stop_watch(self) -> None:
+        """Stop watching the workspace for file changes."""
         if self._observer is not None:
             self._observer.stop()
             self._observer.join(timeout=5.0)
             self._observer = None
 
     def monitor_live_graph(self) -> None:
+        """Start the live graph monitor in a background thread."""
         self._live_graph_monitor = LiveGraphMonitor(
             self,
             poll_interval_seconds=self.config.live_graph_poll_seconds,
@@ -336,11 +385,17 @@ class WatcherEngine:
         self._live_graph_monitor.run_forever()
 
     def stop_live_graph_monitor(self) -> None:
+        """Stop the live graph monitor if it is running."""
         if self._live_graph_monitor is not None:
             self._live_graph_monitor.stop()
             self._live_graph_monitor = None
 
     def start_mcp(self) -> subprocess.Popen[str]:
+        """Start the MCP server as a subprocess.
+
+        Returns:
+            subprocess.Popen[str]: The running MCP server process.
+        """
         if self._mcp_process and self._mcp_process.poll() is None:
             return self._mcp_process
 
@@ -395,6 +450,7 @@ class WatcherEngine:
         thread.start()
 
     def stop_mcp(self) -> None:
+        """Stop the MCP server subprocess if it is running."""
         if self._mcp_process is None:
             return
         if self._mcp_process.poll() is None:
@@ -411,6 +467,18 @@ class WatcherEngine:
         *,
         report: IntelligenceReport | None = None,
     ) -> dict[str, Path]:
+        """Export the graph to various formats.
+
+        Args:
+            formats (Iterable[str] | None, optional): Formats to export (e.g. 'json', 'html'). Defaults to None.
+            report (IntelligenceReport | None, optional): An existing report. Defaults to None.
+
+        Returns:
+            dict[str, Path]: A dictionary mapping format names to their exported file paths.
+
+        Raises:
+            RuntimeError: If called before a graph has been built.
+        """
         graph = self.builder.graph
         if graph.number_of_nodes() == 0:
             raise RuntimeError("Cannot export before building a graph")
@@ -426,6 +494,7 @@ class WatcherEngine:
         return self._run_exports(exporter, formats=formats)
 
     def close(self) -> None:
+        """Stop all background tasks and close database connections."""
         self.stop_watch()
         self.stop_live_graph_monitor()
         self.stop_mcp()

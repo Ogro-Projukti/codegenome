@@ -14,7 +14,11 @@ def cli():
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
 def analyze(path: str):
-    """Triggers the tree-sitter scan, builds the ASTs, and saves to the SQLite graph_store."""
+    """Triggers the tree-sitter scan, builds the ASTs, and saves to the SQLite graph_store.
+
+    Args:
+        path (str): The workspace directory path to analyze.
+    """
     click.echo(f"Analyzing workspace at {path}...")
     workspace = Path(path).resolve()
     config = WatcherConfig(workspace=workspace, export_formats=("json",))
@@ -45,7 +49,12 @@ def analyze(path: str):
     help="Workspace path to export from."
 )
 def export(export_format: str, path: str):
-    """Triggers the exporter pipeline to dump the current graph store into the requested format."""
+    """Triggers the exporter pipeline to dump the current graph store into the requested format.
+
+    Args:
+        export_format (str): Format to export the graph store into (e.g. obsidian, html).
+        path (str): The workspace directory path to export from.
+    """
     workspace = Path(path).resolve()
     config = WatcherConfig(workspace=workspace)
     engine = WatcherEngine(config)
@@ -81,7 +90,11 @@ def export(export_format: str, path: str):
     help="Workspace path for the MCP server."
 )
 def mcp_start(path: str):
-    """Initializes and starts the MCP server so external LLMs can connect."""
+    """Initializes and starts the MCP server so external LLMs can connect.
+
+    Args:
+        path (str): The workspace directory path for the MCP server.
+    """
     workspace = Path(path).resolve()
     config = WatcherConfig(workspace=workspace)
     engine = WatcherEngine(config)
@@ -97,7 +110,12 @@ def mcp_start(path: str):
 @click.option("--live", is_flag=True, help="Enable WebSocket real-time broadcast.")
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
 def evolve(path: str, live: bool):
-    """Start real-time architectural observer and open live UI."""
+    """Start real-time architectural observer and open live UI.
+
+    Args:
+        path (str): The workspace directory path to observe.
+        live (bool): Whether to enable WebSocket real-time broadcast.
+    """
     import time
     import threading
     import webbrowser
@@ -176,7 +194,14 @@ def evolve(path: str, live: bool):
 )
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
 def rules(client: tuple[str], port: int, dry_run: bool, path: str):
-    """Generate agent rules (e.g. .cursorrules, AGENTS.md) pointing to the MCP server."""
+    """Generate agent rules (e.g. .cursorrules, AGENTS.md) pointing to the MCP server.
+
+    Args:
+        client (tuple[str]): Target AI client(s) to generate rules for.
+        port (int): MCP server port to embed in the generated rules.
+        dry_run (bool): If True, print target paths without writing files.
+        path (str): The workspace directory path.
+    """
     from codegenome.rules import generate_rules
     import os
     

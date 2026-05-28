@@ -54,6 +54,8 @@ def log_event(level: int, event: str, **fields: Any) -> None:
 
 @dataclass(frozen=True)
 class ServerConfig:
+    """Configuration for the MCP server."""
+
     host: str
     port: int
     db_path: Path
@@ -63,6 +65,11 @@ class ServerConfig:
 
 
 def configure_logging(level: str) -> None:
+    """Configure basic logging for the MCP server.
+
+    Args:
+        level (str): The logging level to set (e.g., 'INFO', 'DEBUG').
+    """
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(message)s",
@@ -72,14 +79,39 @@ def configure_logging(level: str) -> None:
 
 
 def ok(data: Any) -> dict[str, Any]:
+    """Wrap data in a success response dictionary.
+
+    Args:
+        data (Any): The payload data to wrap.
+
+    Returns:
+        dict[str, Any]: A structured response indicating success.
+    """
     return {"status": "ok", "data": data, "error": None}
 
 
 def error(message: str, *, data: Any = None) -> dict[str, Any]:
+    """Wrap a message in an error response dictionary.
+
+    Args:
+        message (str): The error message.
+        data (Any, optional): Optional additional context data. Defaults to None.
+
+    Returns:
+        dict[str, Any]: A structured response indicating an error.
+    """
     return {"status": "error", "data": data, "error": message}
 
 
 def parse_args(argv: list[str] | None = None) -> ServerConfig:
+    """Parse command line arguments into a ServerConfig.
+
+    Args:
+        argv (list[str] | None, optional): Command line arguments. Defaults to None (uses sys.argv).
+
+    Returns:
+        ServerConfig: The parsed configuration.
+    """
     parser = argparse.ArgumentParser(description="CodeGenome MCP graph server")
     parser.add_argument(
         "--db-path",
@@ -126,6 +158,14 @@ def parse_args(argv: list[str] | None = None) -> ServerConfig:
 
 
 def validate_config(config: ServerConfig) -> None:
+    """Validate the provided server configuration.
+
+    Args:
+        config (ServerConfig): The configuration to validate.
+
+    Raises:
+        ValueError: If host, port, or timeout_seconds is invalid.
+    """
     try:
         host = ipaddress.ip_address(config.host)
     except ValueError as exc:
@@ -147,6 +187,11 @@ class GraphService:
     """Thread-safe wrapper around GraphStore for MCP tool handlers."""
 
     def __init__(self, config: ServerConfig) -> None:
+        """Initialize the GraphService.
+
+        Args:
+            config (ServerConfig): The server configuration.
+        """
         self.config = config
         self._lock = threading.RLock()
         self._store = GraphStore(config.db_path)
@@ -157,6 +202,7 @@ class GraphService:
         return self._store
 
     def startup(self) -> None:
+        """Open the underlying store and log startup details."""
         with self._lock:
             self._store.open()
         summary = self._store.summary()
@@ -176,6 +222,7 @@ class GraphService:
         )
 
     def shutdown(self) -> None:
+        """Close the underlying store and shut down the thread pool."""
         with self._lock:
             self._store.close()
         self._executor.shutdown(wait=False, cancel_futures=True)
@@ -185,6 +232,19 @@ class GraphService:
             return fn(*args, **kwargs)
 
     def run(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Run a callable within the thread pool executor.
+
+        Args:
+            fn (Callable[..., Any]): The function to execute.
+            *args: Positional arguments for the function.
+            **kwargs: Keyword arguments for the function.
+
+        Returns:
+            Any: The result of the function call.
+
+        Raises:
+            TimeoutError: If execution exceeds the configured timeout.
+        """
         future = self._executor.submit(self._invoke, fn, *args, **kwargs)
         try:
             return future.result(timeout=self.config.timeout_seconds)
@@ -225,6 +285,14 @@ class ClientContextMiddleware(Middleware):
 
 
 def extract_client_name(context: MiddlewareContext[Any]) -> str:
+    """Extract the client name from the MCP request context.
+
+    Args:
+        context (MiddlewareContext[Any]): The request context.
+
+    Returns:
+        str: The extracted client name, or 'unknown' if unavailable.
+    """
     message = context.message
     params = getattr(message, "params", None)
     if params is None:
@@ -243,6 +311,14 @@ def extract_client_name(context: MiddlewareContext[Any]) -> str:
 
 
 def resolve_mcp_client(context: MiddlewareContext[Any]) -> str:
+    """Resolve a unified client identifier based on the MCP context.
+
+    Args:
+        context (MiddlewareContext[Any]): The request context.
+
+    Returns:
+        str: The resolved client identifier.
+    """
     fastmcp_context = context.fastmcp_context
     if fastmcp_context is None:
         return "stdio" if MCP_TRANSPORT_CONTEXT.get() == "stdio" else "unknown"
@@ -266,6 +342,15 @@ def create_server(
     *,
     activity: McpActivityTracker | None = None,
 ) -> FastMCP:
+    """Create and configure the FastMCP server with graph tools.
+
+    Args:
+        service (GraphService): The graph service handling tool execution.
+        activity (McpActivityTracker | None, optional): Tracker for tool usage. Defaults to None.
+
+    Returns:
+        FastMCP: The configured MCP server instance.
+    """
     tracker = activity or McpActivityTracker()
 
     mcp = FastMCP(
@@ -520,6 +605,14 @@ def create_server(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Entry point for the MCP server.
+
+    Args:
+        argv (list[str] | None, optional): Command line arguments. Defaults to None.
+
+    Returns:
+        int: Process exit code.
+    """
     try:
         config = parse_args(argv)
         validate_config(config)

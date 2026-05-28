@@ -1,3 +1,9 @@
+"""Initialization module for the codegenome package.
+
+This module exposes the main components of the codebase knowledge graph builder,
+including parsers, scanners, graph building, intelligence, and exporters.
+"""
+
 from .builder import GraphBuilder
 from .clusterer import ClusterResult, GraphClusterer
 from .exporter import GraphExporter, GraphStatistics, SUPPORTED_FORMATS

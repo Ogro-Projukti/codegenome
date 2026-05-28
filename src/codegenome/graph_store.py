@@ -18,6 +18,15 @@ class GraphStoreError(Exception):
 
 @dataclass(frozen=True)
 class GraphSummary:
+    """A summary of a graph snapshot's state and metrics.
+
+    Attributes:
+        snapshot_id (int | None): The unique identifier of the snapshot, if any.
+        node_count (int): Total number of nodes in the snapshot.
+        edge_count (int): Total number of edges in the snapshot.
+        label (str | None): An optional descriptive label for the snapshot.
+        empty (bool): Indicates whether the snapshot contains any nodes.
+    """
     snapshot_id: int | None
     node_count: int
     edge_count: int
@@ -26,9 +35,18 @@ class GraphSummary:
 
 
 class GraphStore:
-    """Load and query a Watcher timeline database."""
+    """Load and query a Watcher timeline database.
+
+    Provides a high-level API to interact with versioned graph snapshots,
+    perform queries, and extract code intelligence metrics.
+    """
 
     def __init__(self, db_path: Path | str) -> None:
+        """Initializes a new GraphStore instance.
+
+        Args:
+            db_path (Path | str): The path to the SQLite timeline database.
+        """
         self.db_path = Path(db_path).resolve()
         self._timeline: GraphTimeline | None = None
         self._graph: Graph = create_graph("igraph")
@@ -38,18 +56,25 @@ class GraphStore:
 
     @property
     def graph(self) -> Graph:
+        """The currently loaded graph instance."""
         return self._graph
 
     @property
     def snapshot_id(self) -> int | None:
+        """The ID of the currently loaded snapshot, or None if empty."""
         return self._snapshot_id
 
     @property
     def is_empty(self) -> bool:
+        """True if the currently loaded graph has no nodes."""
         return self._graph.number_of_nodes() == 0
 
     def open(self) -> None:
-        """Open the timeline database and load the latest snapshot."""
+        """Opens the timeline database and loads the latest snapshot into memory.
+
+        Raises:
+            GraphStoreError: If the database cannot be opened or the snapshot fails to load.
+        """
         try:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._timeline = GraphTimeline(self.db_path)
@@ -77,11 +102,17 @@ class GraphStore:
         self._intelligence = GraphIntelligence(self._graph)
 
     def close(self) -> None:
+        """Closes the connection to the timeline database."""
         if self._timeline is not None:
             self._timeline.close()
             self._timeline = None
 
     def summary(self) -> GraphSummary:
+        """Generates a summary of the currently loaded graph.
+
+        Returns:
+            GraphSummary: High-level metrics for the current graph state.
+        """
         return GraphSummary(
             snapshot_id=self._snapshot_id,
             node_count=self._graph.number_of_nodes(),
@@ -97,6 +128,16 @@ class GraphStore:
         include_edges: bool = False,
         limit: int = 100,
     ) -> dict[str, Any]:
+        """Retrieves a serialized representation of the graph.
+
+        Args:
+            include_nodes (bool): Whether to include node details. Defaults to False.
+            include_edges (bool): Whether to include edge details. Defaults to False.
+            limit (int): Maximum number of nodes and edges to return. Defaults to 100.
+
+        Returns:
+            dict[str, Any]: A payload containing graph summary and optional details.
+        """
         summary = self.summary()
         payload: dict[str, Any] = {
             "snapshot_id": summary.snapshot_id,
@@ -119,6 +160,20 @@ class GraphStore:
         kind: str | None = None,
         limit: int = 50,
     ) -> dict[str, Any]:
+        """Queries the graph for nodes matching specific criteria.
+
+        Args:
+            node_type (str | None): Filter by node type (e.g., 'file', 'symbol').
+            file_path (str | None): Filter by a file path prefix.
+            kind (str | None): Filter by symbol kind (e.g., 'function', 'class').
+            limit (int): Maximum number of results to return. Defaults to 50.
+
+        Returns:
+            dict[str, Any]: A payload containing the search results and metadata.
+
+        Raises:
+            ValueError: If `limit` is not a positive integer.
+        """
         if limit <= 0:
             raise ValueError("limit must be a positive integer")
 
@@ -142,6 +197,17 @@ class GraphStore:
         }
 
     def get_node(self, node_id: str) -> dict[str, Any] | None:
+        """Retrieves attributes for a specific node by its ID.
+
+        Args:
+            node_id (str): The unique identifier of the node.
+
+        Returns:
+            dict[str, Any] | None: The node's attributes, or None if it doesn't exist.
+
+        Raises:
+            ValueError: If `node_id` is empty.
+        """
         if not node_id:
             raise ValueError("node_id is required")
         if not self._graph.has_node(node_id):
@@ -154,6 +220,20 @@ class GraphStore:
         *,
         direction: Literal["in", "out", "both"] = "both",
     ) -> dict[str, Any]:
+        """Retrieves neighboring nodes for a specific node.
+
+        Args:
+            node_id (str): The unique identifier of the central node.
+            direction (Literal["in", "out", "both"]): Which direction of edges to follow.
+                Defaults to "both".
+
+        Returns:
+            dict[str, Any]: A payload describing the incoming and/or outgoing neighbors.
+
+        Raises:
+            ValueError: If `node_id` is empty.
+            GraphStoreError: If the node does not exist in the graph.
+        """
         if not node_id:
             raise ValueError("node_id is required")
         if not self._graph.has_node(node_id):
@@ -194,6 +274,19 @@ class GraphStore:
         snapshot_from: int,
         snapshot_to: int,
     ) -> dict[str, Any]:
+        """Computes the differences between two graph snapshots.
+
+        Args:
+            snapshot_from (int): The ID of the older snapshot.
+            snapshot_to (int): The ID of the newer snapshot.
+
+        Returns:
+            dict[str, Any]: A dictionary detailing added, modified, and removed nodes and edges.
+
+        Raises:
+            GraphStoreError: If the timeline database is not open.
+            ValueError: If snapshot IDs are not positive integers.
+        """
         if self._timeline is None:
             raise GraphStoreError("Timeline database is not open")
         if snapshot_from <= 0 or snapshot_to <= 0:
@@ -207,6 +300,17 @@ class GraphStore:
         *,
         node_id: str | None = None,
     ) -> dict[str, Any]:
+        """Retrieves the history of snapshots or a specific node.
+
+        Args:
+            node_id (str | None): If provided, returns the version history for this specific node.
+
+        Returns:
+            dict[str, Any]: A payload listing available snapshots and optionally node history.
+
+        Raises:
+            GraphStoreError: If the timeline database is not open.
+        """
         if self._timeline is None:
             raise GraphStoreError("Timeline database is not open")
 
@@ -225,21 +329,52 @@ class GraphStore:
         return payload
 
     def get_dead_code(self) -> list[str]:
+        """Detects likely dead code by finding unreferenced symbols.
+
+        Returns:
+            list[str]: A list of node IDs corresponding to unreferenced symbols.
+        """
         return self._require_intelligence().detect_dead_code()
 
     def get_entry_points(self) -> list[str]:
+        """Detects entry points to the application (e.g., main scripts, public API).
+
+        Returns:
+            list[str]: A list of node IDs that act as entry points.
+        """
         return self._require_intelligence().detect_entry_points()
 
     def get_god_nodes(self) -> list[dict[str, Any]]:
+        """Identifies highly connected or overly complex nodes (God Nodes).
+
+        Returns:
+            list[dict[str, Any]]: A list of dictionaries containing 'node_id' and a severity 'score'.
+        """
         return [
             {"node_id": node_id, "score": score}
             for node_id, score in self._require_intelligence().detect_god_nodes()
         ]
 
     def get_circular_deps(self) -> list[list[str]]:
+        """Detects cycles in the import or dependency graph.
+
+        Returns:
+            list[list[str]]: A list of cycles, where each cycle is a list of node IDs.
+        """
         return self._require_intelligence().detect_circular_dependencies()
 
     def get_complexity(self, *, limit: int = 25) -> list[dict[str, Any]]:
+        """Ranks nodes by their computed complexity score.
+
+        Args:
+            limit (int): Maximum number of nodes to return. Defaults to 25.
+
+        Returns:
+            list[dict[str, Any]]: A list of dictionaries containing 'node_id' and 'complexity'.
+
+        Raises:
+            ValueError: If `limit` is not a positive integer.
+        """
         if limit <= 0:
             raise ValueError("limit must be a positive integer")
         rankings = self._require_intelligence().complexity_rankings()[:limit]
@@ -253,6 +388,21 @@ class GraphStore:
         snapshot_to: int | None = None,
         limit: int = 25,
     ) -> dict[str, Any]:
+        """Analyzes how frequently nodes or a specific file have changed over time.
+
+        Args:
+            file_path (str | None): Analyze churn for a specific file path.
+            snapshot_from (int | None): Limit analysis starting from this snapshot ID.
+            snapshot_to (int | None): Limit analysis ending at this snapshot ID.
+            limit (int): Maximum number of nodes to return for overall rankings. Defaults to 25.
+
+        Returns:
+            dict[str, Any]: Churn rankings or the churn rate for the specific file.
+
+        Raises:
+            ValueError: If `limit` is not a positive integer.
+            GraphStoreError: If a specific file is queried and the database is not open.
+        """
         if limit <= 0:
             raise ValueError("limit must be a positive integer")
 
@@ -279,6 +429,19 @@ class GraphStore:
         node_type: str | None = None,
         limit: int = 25,
     ) -> list[dict[str, Any]]:
+        """Performs a case-insensitive text search across node names and paths.
+
+        Args:
+            query (str): The text to search for.
+            node_type (str | None): Optionally filter by a specific node type.
+            limit (int): Maximum number of results to return. Defaults to 25.
+
+        Returns:
+            list[dict[str, Any]]: A list of matching nodes with their attributes.
+
+        Raises:
+            ValueError: If the query is empty or limit is not a positive integer.
+        """
         if not query.strip():
             raise ValueError("query must not be empty")
         if limit <= 0:

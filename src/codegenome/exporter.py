@@ -38,7 +38,19 @@ SUPPORTED_FORMATS = frozenset(
 
 @dataclass(frozen=True)
 class GraphStatistics:
-    """High-level graph metrics for reports and exports."""
+    """High-level graph metrics for reports and exports.
+
+    Attributes:
+        node_count (int): Total number of nodes in the graph.
+        edge_count (int): Total number of edges in the graph.
+        file_count (int): Number of nodes representing files.
+        symbol_count (int): Number of nodes representing symbols.
+        import_count (int): Number of nodes representing imports.
+        external_count (int): Number of external nodes.
+        community_count (int): Number of detected communities.
+        bridge_count (int): Number of bridge nodes connecting communities.
+        languages (dict[str, int]): Distribution of programming languages among files.
+    """
 
     node_count: int
     edge_count: int
@@ -53,13 +65,24 @@ class GraphStatistics:
 
 @dataclass
 class GraphExporter:
-    """Serialize Watcher graphs and intelligence into multiple formats."""
+    """Serialize Watcher graphs and intelligence into multiple formats.
+
+    Attributes:
+        graph (Graph): The graph instance to be exported.
+        report (IntelligenceReport | None): Optional intelligence report for augmented exports.
+        workspace_name (str): The name of the workspace being exported.
+    """
 
     graph: Graph
     report: IntelligenceReport | None = None
     workspace_name: str = "workspace"
 
     def compute_statistics(self) -> GraphStatistics:
+        """Computes statistical metrics based on the current graph's nodes and edges.
+
+        Returns:
+            GraphStatistics: An object containing aggregated counts and distributions.
+        """
         languages: dict[str, int] = {}
         file_count = symbol_count = import_count = external_count = 0
         communities: set[int] = set()
@@ -98,6 +121,14 @@ class GraphExporter:
         )
 
     def export_json(self, output_path: Path) -> Path:
+        """Exports the graph data into a JSON format.
+
+        Args:
+            output_path (Path): The destination file path where the JSON data will be written.
+
+        Returns:
+            Path: The path to the successfully created JSON file.
+        """
         import uuid
         import time
         import shutil
@@ -130,6 +161,14 @@ class GraphExporter:
         return output_path
 
     def export_html(self, output_path: Path) -> Path:
+        """Exports the graph data as an interactive HTML visualization.
+
+        Args:
+            output_path (Path): The destination file path where the HTML report will be written.
+
+        Returns:
+            Path: The path to the successfully created HTML file.
+        """
         stats = self.compute_statistics()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         bundled_js = copy_html_asset(
@@ -150,12 +189,28 @@ class GraphExporter:
         return output_path
 
     def export_graphml(self, output_path: Path) -> Path:
+        """Exports the graph to GraphML format.
+
+        Args:
+            output_path (Path): The destination file path for the GraphML export.
+
+        Returns:
+            Path: The path to the successfully created GraphML file.
+        """
         export_graph = self._graphml_graph()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         nx.write_graphml(export_graph, output_path)
         return output_path
 
     def export_cypher(self, output_path: Path) -> Path:
+        """Exports the graph nodes and edges as Cypher queries for Neo4j import.
+
+        Args:
+            output_path (Path): The destination file path for the Cypher statements.
+
+        Returns:
+            Path: The path to the successfully created Cypher file.
+        """
         lines = [
             "// Watcher graph export for Neo4j",
             f"// workspace: {self.workspace_name}",
@@ -182,11 +237,27 @@ class GraphExporter:
         return output_path
 
     def export_markdown(self, output_path: Path) -> Path:
+        """Exports a statistical summary and intelligence report to Markdown format.
+
+        Args:
+            output_path (Path): The destination file path for the Markdown report.
+
+        Returns:
+            Path: The path to the successfully created Markdown file.
+        """
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(self._render_markdown(), encoding="utf-8")
         return output_path
 
     def export_obsidian(self, output_dir: Path) -> Path:
+        """Exports the graph as an Obsidian vault structure with interlinked notes.
+
+        Args:
+            output_dir (Path): The destination directory that will act as the root of the Obsidian vault.
+
+        Returns:
+            Path: The path to the generated Obsidian vault directory.
+        """
         vault_root = output_dir
         files_dir = vault_root / "Files"
         symbols_dir = vault_root / "Symbols"
@@ -253,6 +324,19 @@ class GraphExporter:
         output_dir: Path,
         formats: Iterable[str] | None = None,
     ) -> dict[str, Path]:
+        """Exports the graph into multiple selected formats simultaneously.
+
+        Args:
+            output_dir (Path): The destination directory for all export files.
+            formats (Iterable[str] | None): A collection of format strings to export.
+                If None, all supported formats are exported.
+
+        Returns:
+            dict[str, Path]: A dictionary mapping the exported format name to its generated file path.
+
+        Raises:
+            ValueError: If an unsupported format is provided in `formats`.
+        """
         selected = {fmt.lower() for fmt in (formats or SUPPORTED_FORMATS)}
         unknown = selected - SUPPORTED_FORMATS
         if unknown:

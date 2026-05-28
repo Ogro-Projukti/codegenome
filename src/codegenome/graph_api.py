@@ -13,74 +13,217 @@ class Graph:
     """Abstract interface for graph operations."""
 
     def clear(self) -> None:
+        """Removes all nodes and edges from the graph."""
         raise NotImplementedError
 
     def add_node(self, node_id: str, **attrs: Any) -> None:
+        """Adds a node to the graph with optional attributes.
+
+        Args:
+            node_id (str): The unique identifier for the node.
+            **attrs (Any): Optional keyword arguments for node attributes.
+        """
         raise NotImplementedError
 
     def add_edge(self, source: str, target: str, **attrs: Any) -> None:
+        """Adds a directed edge between two nodes with optional attributes.
+
+        Args:
+            source (str): The identifier of the source node.
+            target (str): The identifier of the target node.
+            **attrs (Any): Optional keyword arguments for edge attributes.
+        """
         raise NotImplementedError
 
     def remove_nodes_from(self, nodes: Iterable[str]) -> None:
+        """Removes a collection of nodes from the graph.
+
+        Args:
+            nodes (Iterable[str]): A collection of node identifiers to remove.
+        """
         raise NotImplementedError
 
     def number_of_nodes(self) -> int:
+        """Returns the total number of nodes in the graph.
+
+        Returns:
+            int: The node count.
+        """
         raise NotImplementedError
 
     def number_of_edges(self) -> int:
+        """Returns the total number of edges in the graph.
+
+        Returns:
+            int: The edge count.
+        """
         raise NotImplementedError
 
     def has_node(self, node_id: str) -> bool:
+        """Checks if a node exists in the graph.
+
+        Args:
+            node_id (str): The node identifier to check.
+
+        Returns:
+            bool: True if the node exists, False otherwise.
+        """
         raise NotImplementedError
 
     def copy(self) -> 'Graph':
+        """Creates a deep copy of the graph.
+
+        Returns:
+            Graph: A new graph instance with the same nodes, edges, and attributes.
+        """
         raise NotImplementedError
 
     def has_edge(self, source: str, target: str) -> bool:
+        """Checks if a directed edge exists between two nodes.
+
+        Args:
+            source (str): The source node identifier.
+            target (str): The target node identifier.
+
+        Returns:
+            bool: True if the edge exists, False otherwise.
+        """
         raise NotImplementedError
 
     def get_node(self, node_id: str) -> dict[str, Any]:
+        """Retrieves the attributes of a specific node.
+
+        Args:
+            node_id (str): The identifier of the node.
+
+        Returns:
+            dict[str, Any]: A dictionary of node attributes.
+        """
         raise NotImplementedError
 
     def set_node_attr(self, node_id: str, key: str, value: Any) -> None:
+        """Sets a specific attribute for a node.
+
+        Args:
+            node_id (str): The identifier of the node.
+            key (str): The attribute key.
+            value (Any): The attribute value.
+        """
         raise NotImplementedError
 
     def get_edge(self, source: str, target: str) -> dict[str, Any]:
+        """Retrieves the attributes of a specific directed edge.
+
+        Args:
+            source (str): The source node identifier.
+            target (str): The target node identifier.
+
+        Returns:
+            dict[str, Any]: A dictionary of edge attributes.
+        """
         raise NotImplementedError
 
     def iter_nodes(self) -> Iterator[Tuple[str, dict[str, Any]]]:
+        """Iterates over all nodes and their attributes.
+
+        Yields:
+            Tuple[str, dict[str, Any]]: A tuple containing the node identifier and its attributes.
+        """
         raise NotImplementedError
 
     def in_degree(self, node_id: str) -> int:
+        """Calculates the number of incoming edges for a node.
+
+        Args:
+            node_id (str): The identifier of the node.
+
+        Returns:
+            int: The in-degree count.
+        """
         raise NotImplementedError
 
     def out_degree(self, node_id: str) -> int:
+        """Calculates the number of outgoing edges for a node.
+
+        Args:
+            node_id (str): The identifier of the node.
+
+        Returns:
+            int: The out-degree count.
+        """
         raise NotImplementedError
 
     def iter_edges(self) -> Iterator[Tuple[str, str, dict[str, Any]]]:
+        """Iterates over all directed edges and their attributes.
+
+        Yields:
+            Tuple[str, str, dict[str, Any]]: A tuple containing the source node, target node, and edge attributes.
+        """
         raise NotImplementedError
 
     def in_edges(self, node_id: str) -> Iterator[Tuple[str, str, dict[str, Any]]]:
+        """Iterates over all incoming edges for a specific node.
+
+        Args:
+            node_id (str): The identifier of the target node.
+
+        Yields:
+            Tuple[str, str, dict[str, Any]]: A tuple of (source, target, attributes).
+        """
         raise NotImplementedError
 
     def out_edges(self, node_id: str) -> Iterator[Tuple[str, str, dict[str, Any]]]:
+        """Iterates over all outgoing edges from a specific node.
+
+        Args:
+            node_id (str): The identifier of the source node.
+
+        Yields:
+            Tuple[str, str, dict[str, Any]]: A tuple of (source, target, attributes).
+        """
         raise NotImplementedError
 
     def neighbors(self, node_id: str) -> Iterator[str]:
+        """Iterates over the successor neighbors (outgoing edges) of a node.
+
+        Args:
+            node_id (str): The identifier of the node.
+
+        Yields:
+            str: The identifier of a neighboring node.
+        """
         raise NotImplementedError
 
     def strongly_connected_components(self) -> list[set[str]]:
+        """Identifies all strongly connected components in the graph.
+
+        Returns:
+            list[set[str]]: A list of sets, where each set contains node identifiers forming a strongly connected component.
+        """
         raise NotImplementedError
 
     def to_serializable(self) -> dict[str, Any]:
+        """Converts the graph into a dictionary suitable for JSON serialization.
+
+        Returns:
+            dict[str, Any]: A serializable representation of the graph.
+        """
         raise NotImplementedError
 
     def to_networkx(self) -> nx.DiGraph:
-        """Compatibility layer for incremental migration."""
+        """Converts the graph to a NetworkX DiGraph.
+
+        Returns:
+            nx.DiGraph: A NetworkX directed graph representation.
+        """
         raise NotImplementedError
 
     def to_igraph(self) -> ig.Graph:
-        """Compatibility layer for incremental migration."""
+        """Converts the graph to an igraph Graph.
+
+        Returns:
+            ig.Graph: An igraph directed graph representation.
+        """
         raise NotImplementedError
 
 
@@ -335,7 +478,15 @@ class IGraphGraph(Graph):
         return self._graph
 
 def create_graph(backend: str = "igraph") -> Graph:
-    """Factory to create a graph instance."""
+    """Factory function to create a concrete Graph instance.
+
+    Args:
+        backend (str): The underlying library to use ("igraph" or "networkx").
+            Defaults to "igraph".
+
+    Returns:
+        Graph: An initialized graph instance.
+    """
     if backend == "networkx":
         return NetworkXGraph()
     return IGraphGraph()

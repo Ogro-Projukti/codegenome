@@ -21,10 +21,20 @@ class WorkspaceMetricsScanner:
     """Count tracked files and total lines under a workspace root."""
 
     def __init__(self, root: Path | str) -> None:
+        """Initialize the scanner with a workspace root.
+
+        Args:
+            root (Path | str): The root directory of the workspace.
+        """
         self.root = Path(root).resolve()
         self.ignore = IgnoreMatcher.for_workspace(self.root)
 
     def scan(self) -> WorkspaceMetrics:
+        """Scan the workspace to compute current metrics.
+
+        Returns:
+            WorkspaceMetrics: The computed metrics containing file and line counts.
+        """
         if not self.root.is_dir():
             return WorkspaceMetrics(file_count=0, line_count=0)
 
@@ -63,7 +73,15 @@ class WorkspaceMetricsScanner:
 
 
 def metrics_increased(previous: WorkspaceMetrics, current: WorkspaceMetrics) -> bool:
-    """Return True when the workspace grew since the previous sample."""
+    """Return True when the workspace grew since the previous sample.
+
+    Args:
+        previous (WorkspaceMetrics): The previous metrics sample.
+        current (WorkspaceMetrics): The current metrics sample.
+
+    Returns:
+        bool: True if either file count or line count increased, False otherwise.
+    """
     return (
         current.file_count > previous.file_count
         or current.line_count > previous.line_count
@@ -71,5 +89,13 @@ def metrics_increased(previous: WorkspaceMetrics, current: WorkspaceMetrics) -> 
 
 
 def _count_lines(path: Path) -> int:
+    """Count the total number of lines in a given file.
+
+    Args:
+        path (Path): The path to the file to count lines for.
+
+    Returns:
+        int: The number of lines in the file.
+    """
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         return sum(1 for _ in handle)

@@ -1,4 +1,9 @@
-"""Architectural intelligence analysis over Watcher dependency graphs."""
+"""Architectural intelligence analysis over Watcher dependency graphs.
+
+This module provides tools for analyzing a dependency graph and deriving
+actionable architectural signals such as dead code detection, circular
+dependency identification, and complexity rankings.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +18,17 @@ from codegenome.registry import GlobalDependencyRegistry
 
 @dataclass(frozen=True)
 class IntelligenceReport:
-    """Aggregated architectural intelligence for a codebase graph."""
+    """Aggregated architectural intelligence for a codebase graph.
+
+    Attributes:
+        dead_code (list[str]): List of node IDs representing unused symbols.
+        circular_dependencies (list[list[str]]): List of cycles (each a list of nodes).
+        god_nodes (list[tuple[str, float]]): Nodes with unusually high in/out degrees.
+        entry_points (list[str]): File and symbol IDs that act as entry points.
+        orphan_modules (list[str]): Files that are not imported by and do not import others.
+        complexity_rankings (list[tuple[str, int]]): Symbols ranked by cyclomatic complexity.
+        churn_rankings (list[tuple[str, int]]): Nodes ranked by churn rate.
+    """
 
     dead_code: list[str] = field(default_factory=list)
     circular_dependencies: list[list[str]] = field(default_factory=list)
@@ -25,7 +40,11 @@ class IntelligenceReport:
 
 
 class GraphIntelligence:
-    """Derive actionable architectural signals from a Watcher graph."""
+    """Derive actionable architectural signals from a Watcher graph.
+
+    This class provides various methods to analyze the codebase graph
+    and detect issues like dead code, god nodes, and circular dependencies.
+    """
 
     ENTRY_SYMBOL_NAMES = frozenset({"main", "run", "cli", "app"})
     ENTRY_FILE_NAMES = frozenset(
@@ -39,11 +58,24 @@ class GraphIntelligence:
         registry: GlobalDependencyRegistry | None = None,
         god_node_stddevs: float = 1.0,
     ) -> None:
+        """Initialize the GraphIntelligence analyzer.
+
+        Args:
+            graph (Graph): The dependency graph to analyze.
+            registry (GlobalDependencyRegistry | None): Optional global dependency registry.
+            god_node_stddevs (float): Number of standard deviations above the mean
+                to use as the threshold for detecting god nodes. Defaults to 1.0.
+        """
         self.graph = graph
         self.registry = registry
         self.god_node_stddevs = god_node_stddevs
 
     def analyze(self) -> IntelligenceReport:
+        """Run all architectural analyses and aggregate the results.
+
+        Returns:
+            IntelligenceReport: A comprehensive report of the graph intelligence.
+        """
         return IntelligenceReport(
             dead_code=self.detect_dead_code(),
             circular_dependencies=self.detect_circular_dependencies(),
@@ -55,6 +87,11 @@ class GraphIntelligence:
         )
 
     def detect_dead_code(self) -> list[str]:
+        """Detect functions and methods that are never called.
+
+        Returns:
+            list[str]: A sorted list of node IDs corresponding to dead code.
+        """
         if self.graph.number_of_nodes() == 0:
             return []
 
@@ -81,6 +118,11 @@ class GraphIntelligence:
         return sorted(dead)
 
     def detect_circular_dependencies(self) -> list[list[str]]:
+        """Identify circular import dependencies between files.
+
+        Returns:
+            list[list[str]]: A list of cycles, where each cycle is a list of node IDs.
+        """
         file_graph = self._file_import_graph()
         if file_graph.number_of_nodes() == 0:
             return []
@@ -101,6 +143,12 @@ class GraphIntelligence:
         return cycles
 
     def detect_god_nodes(self) -> list[tuple[str, float]]:
+        """Identify nodes with excessively high degrees (god nodes).
+
+        Returns:
+            list[tuple[str, float]]: A list of tuples containing node IDs and their
+                corresponding scores, sorted in descending order of score.
+        """
         scores: dict[str, float] = {}
         for node, attrs in self.graph.iter_nodes():
             if attrs.get("node_type") not in {"file", "symbol"}:
@@ -136,6 +184,11 @@ class GraphIntelligence:
         return ranked
 
     def detect_entry_points(self) -> list[str]:
+        """Detect file and symbol nodes that serve as application entry points.
+
+        Returns:
+            list[str]: A sorted list of node IDs representing entry points.
+        """
         if self.graph.number_of_nodes() == 0:
             return []
 
@@ -160,6 +213,11 @@ class GraphIntelligence:
         return sorted(set(file_entries) | set(symbol_entries))
 
     def detect_orphan_modules(self) -> list[str]:
+        """Identify files that have no incoming or outgoing dependencies.
+
+        Returns:
+            list[str]: A sorted list of file paths that are orphans.
+        """
         if self.graph.number_of_nodes() == 0:
             return []
 
@@ -178,6 +236,12 @@ class GraphIntelligence:
         return sorted(orphans)
 
     def complexity_rankings(self) -> list[tuple[str, int]]:
+        """Rank symbols based on their cyclomatic complexity.
+
+        Returns:
+            list[tuple[str, int]]: A list of tuples containing symbol node IDs and
+                their complexity scores, sorted in descending order.
+        """
         ranked: list[tuple[str, int]] = []
         for node, attrs in self.graph.iter_nodes():
             if attrs.get("node_type") != "symbol":
@@ -190,6 +254,12 @@ class GraphIntelligence:
         return ranked
 
     def churn_rankings(self) -> list[tuple[str, int]]:
+        """Rank nodes based on their churn rate (how often they change).
+
+        Returns:
+            list[tuple[str, int]]: A list of tuples containing node IDs and their
+                churn values, sorted in descending order.
+        """
         ranked: list[tuple[str, int]] = []
         for node, attrs in self.graph.iter_nodes():
             if attrs.get("node_type") not in {"file", "symbol"}:
@@ -363,11 +433,20 @@ class GraphIntelligence:
 
 
 class PathLike:
-    """Minimal path helper to avoid importing pathlib in hot loops."""
+    """Minimal path helper to avoid importing pathlib in hot loops.
+
+    Attributes:
+        _value (str): The internal normalized path string.
+    """
 
     __slots__ = ("_value",)
 
     def __init__(self, value: str) -> None:
+        """Initialize the PathLike object.
+
+        Args:
+            value (str): The path string to normalize and wrap.
+        """
         self._value = value.replace("\\", "/")
 
     @property

@@ -1,4 +1,9 @@
-"""SQLite-backed graph snapshot and delta timeline for Watcher."""
+"""SQLite-backed graph snapshot and delta timeline for Watcher.
+
+This module provides the GraphTimeline class, which records full dependency
+graphs into a SQLite database, allowing for historical analysis and
+structural diffing (deltas) between points in time.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +20,15 @@ from codegenome.graph_api import Graph, create_graph
 
 @dataclass(frozen=True)
 class SnapshotInfo:
-    """Metadata for a stored graph snapshot."""
+    """Metadata for a stored graph snapshot.
+
+    Attributes:
+        snapshot_id (int): Unique identifier for the snapshot.
+        created_at (float): Unix timestamp of snapshot creation.
+        label (str | None): Optional descriptive label.
+        node_count (int): Number of nodes in the graph at this snapshot.
+        edge_count (int): Number of edges in the graph at this snapshot.
+    """
 
     snapshot_id: int
     created_at: float
@@ -26,7 +39,17 @@ class SnapshotInfo:
 
 @dataclass
 class GraphDelta:
-    """Structural diff between two snapshots."""
+    """Structural diff between two snapshots.
+
+    Attributes:
+        snapshot_from (int): ID of the base snapshot.
+        snapshot_to (int): ID of the target snapshot.
+        added_nodes (list[str]): Node IDs present in target but not base.
+        removed_nodes (list[str]): Node IDs present in base but not target.
+        modified_nodes (list[str]): Node IDs with changed attributes.
+        added_edges (list[tuple[str, str]]): Edges present in target but not base.
+        removed_edges (list[tuple[str, str]]): Edges present in base but not target.
+    """
 
     snapshot_from: int
     snapshot_to: int
@@ -39,7 +62,13 @@ class GraphDelta:
 
 @dataclass(frozen=True)
 class NodeHistoryEntry:
-    """Historical node state at a snapshot."""
+    """Historical node state at a snapshot.
+
+    Attributes:
+        snapshot_id (int): ID of the snapshot where the node was recorded.
+        created_at (float): Timestamp of the snapshot.
+        attrs (dict[str, Any]): Node attributes at that point in time.
+    """
 
     snapshot_id: int
     created_at: float
@@ -47,9 +76,18 @@ class NodeHistoryEntry:
 
 
 class GraphTimeline:
-    """Persist graph snapshots, compute deltas, and answer historical queries."""
+    """Persist graph snapshots, compute deltas, and answer historical queries.
+
+    This class uses a SQLite database to securely log states of the
+    dependency graph and evaluate changes over time (churn rate, deltas).
+    """
 
     def __init__(self, db_path: Path | str) -> None:
+        """Initialize the GraphTimeline.
+
+        Args:
+            db_path (Path | str): Path to the SQLite timeline database.
+        """
         self.db_path = Path(db_path).resolve()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         # MCP tool handlers run on worker threads; allow cross-thread reads/writes.
@@ -58,6 +96,7 @@ class GraphTimeline:
         self._initialize_schema()
 
     def close(self) -> None:
+        """Close the database connection."""
         self._conn.close()
 
     def record_snapshot(
@@ -67,6 +106,16 @@ class GraphTimeline:
         label: str | None = None,
         created_at: float | None = None,
     ) -> int:
+        """Save a full copy of the current graph to the database.
+
+        Args:
+            graph (Graph): The current dependency graph.
+            label (str | None): An optional string label for the snapshot.
+            created_at (float | None): Explicit timestamp. Defaults to current time.
+
+        Returns:
+            int: The ID of the newly created snapshot.
+        """
         timestamp = created_at if created_at is not None else time.time()
         cursor = self._conn.execute(
             """
@@ -109,6 +158,14 @@ class GraphTimeline:
         return snapshot_id
 
     def load_snapshot(self, snapshot_id: int) -> Graph:
+        """Reconstruct a dependency graph from a specific snapshot ID.
+
+        Args:
+            snapshot_id (int): The ID of the snapshot to load.
+
+        Returns:
+            Graph: The reconstructed graph instance.
+        """
         graph = create_graph("igraph")
         rows = self._conn.execute(
             "SELECT node_id, attrs_json FROM graph_nodes WHERE snapshot_id = ?",
@@ -134,6 +191,11 @@ class GraphTimeline:
         return graph
 
     def list_snapshots(self) -> list[SnapshotInfo]:
+        """List all recorded snapshots in ascending order.
+
+        Returns:
+            list[SnapshotInfo]: A list of metadata objects for each snapshot.
+        """
         rows = self._conn.execute(
             """
             SELECT snapshot_id, created_at, label, node_count, edge_count
@@ -153,6 +215,15 @@ class GraphTimeline:
         ]
 
     def compute_delta(self, snapshot_from: int, snapshot_to: int) -> GraphDelta:
+        """Compute the structural differences between two snapshots.
+
+        Args:
+            snapshot_from (int): The starting snapshot ID.
+            snapshot_to (int): The ending snapshot ID.
+
+        Returns:
+            GraphDelta: An object detailing added, removed, and modified elements.
+        """
         from_nodes = self._node_map(snapshot_from)
         to_nodes = self._node_map(snapshot_to)
         from_edges = self._edge_set(snapshot_from)
@@ -180,6 +251,14 @@ class GraphTimeline:
         )
 
     def query_node_history(self, node_id: str) -> list[NodeHistoryEntry]:
+        """Retrieve the historical states of a specific node across all snapshots.
+
+        Args:
+            node_id (str): The ID of the node to query.
+
+        Returns:
+            list[NodeHistoryEntry]: A chronological list of the node's state history.
+        """
         rows = self._conn.execute(
             """
             SELECT s.snapshot_id, s.created_at, n.attrs_json
@@ -206,6 +285,19 @@ class GraphTimeline:
         snapshot_from: int | None = None,
         snapshot_to: int | None = None,
     ) -> float:
+        """Calculate the churn rate for a specific file between snapshots.
+
+        The churn rate is defined as the number of snapshots where the file's
+        node attributes changed, divided by the total number of snapshot intervals.
+
+        Args:
+            file_path (str): The file path to calculate churn for.
+            snapshot_from (int | None): Starting snapshot ID (inclusive).
+            snapshot_to (int | None): Ending snapshot ID (inclusive).
+
+        Returns:
+            float: A value between 0.0 and 1.0 representing the churn rate.
+        """
         snapshots = self.list_snapshots()
         if len(snapshots) < 2:
             return 0.0

@@ -15,6 +15,12 @@ class LiveGraphServer:
     """Manage WebSocket connections and broadcast real-time graph updates."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 8765):
+        """Initialize the LiveGraphServer.
+
+        Args:
+            host (str, optional): The host address to bind to. Defaults to "127.0.0.1".
+            port (int, optional): The port to listen on. Defaults to 8765.
+        """
         self.host = host
         self.port = port
         self.clients: Set[websockets.WebSocketServerProtocol] = set()
@@ -23,7 +29,11 @@ class LiveGraphServer:
         self._stop_event = threading.Event()
 
     async def register(self, websocket: websockets.WebSocketServerProtocol) -> None:
-        """Register a new client connection."""
+        """Register a new client connection.
+
+        Args:
+            websocket (websockets.WebSocketServerProtocol): The connected client websocket.
+        """
         self.clients.add(websocket)
         LOG.info(f"WebSocket client connected. Total clients: {len(self.clients)}")
         try:
@@ -33,7 +43,13 @@ class LiveGraphServer:
             LOG.info(f"WebSocket client disconnected. Total clients: {len(self.clients)}")
 
     async def _handler(self, websocket, *args, **kwargs) -> None:
-        """Handle an incoming WebSocket connection."""
+        """Handle an incoming WebSocket connection.
+
+        Args:
+            websocket (websockets.WebSocketServerProtocol): The incoming websocket connection.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
         await self.register(websocket)
 
     async def _start_server(self) -> None:
@@ -60,13 +76,17 @@ class LiveGraphServer:
         self._thread.start()
 
     def stop(self) -> None:
-        """Stop the WebSocket server."""
+        """Stop the WebSocket server and its daemon thread if running."""
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=2.0)
 
     async def broadcast_graph_delta(self, delta_payload: dict) -> None:
-        """Push a JSON-serializable graph delta to all connected clients."""
+        """Push a JSON-serializable graph delta to all connected clients.
+
+        Args:
+            delta_payload (dict): A dictionary representing the graph delta.
+        """
         if not self.clients:
             return
             
@@ -74,7 +94,11 @@ class LiveGraphServer:
         websockets.broadcast(self.clients, message)
 
     def sync_broadcast_graph_delta(self, delta_payload: dict) -> None:
-        """A thread-safe wrapper to broadcast from a synchronous context."""
+        """A thread-safe wrapper to broadcast from a synchronous context.
+
+        Args:
+            delta_payload (dict): A dictionary representing the graph delta.
+        """
         if self._loop and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(
                 self.broadcast_graph_delta(delta_payload), 

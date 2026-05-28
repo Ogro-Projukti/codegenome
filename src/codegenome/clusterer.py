@@ -14,19 +14,41 @@ from codegenome.graph_api import Graph, create_graph
 
 @dataclass(frozen=True)
 class ClusterResult:
-    """Community detection output."""
+    """Community detection output.
+
+    Attributes:
+        communities (dict[str, int]): Mapping of node IDs to community IDs.
+        bridge_nodes (list[str]): List of node IDs identified as bridge nodes.
+    """
 
     communities: dict[str, int] = field(default_factory=dict)
     bridge_nodes: list[str] = field(default_factory=list)
 
 
 class GraphClusterer:
-    """Detect architectural communities and bridge nodes."""
+    """Detect architectural communities and bridge nodes.
+
+    Attributes:
+        resolution (float): The resolution parameter for the Leiden algorithm.
+    """
 
     def __init__(self, *, resolution: float = 1.0) -> None:
+        """Initialize the GraphClusterer.
+
+        Args:
+            resolution (float, optional): Resolution parameter for the Leiden algorithm. Defaults to 1.0.
+        """
         self.resolution = resolution
 
     def cluster(self, graph: Graph) -> ClusterResult:
+        """Perform community detection on the given graph.
+
+        Args:
+            graph (Graph): The graph to cluster.
+
+        Returns:
+            ClusterResult: The results of the community detection, including communities and bridge nodes.
+        """
         clustering_graph = self._clustering_graph(graph)
         if clustering_graph.number_of_nodes() == 0:
             return ClusterResult()
@@ -67,6 +89,14 @@ class GraphClusterer:
         return ClusterResult(communities=communities, bridge_nodes=bridge_nodes)
 
     def annotate(self, graph: Graph) -> Graph:
+        """Annotate the graph nodes with their community IDs and bridge status.
+
+        Args:
+            graph (Graph): The graph to annotate.
+
+        Returns:
+            Graph: The annotated graph.
+        """
         result = self.cluster(graph)
         file_communities = dict(result.communities)
         bridge_set = set(result.bridge_nodes)
@@ -92,6 +122,15 @@ class GraphClusterer:
         graph: Graph,
         communities: dict[str, int],
     ) -> list[str]:
+        """Identify bridge nodes that connect different communities.
+
+        Args:
+            graph (Graph): The underlying graph structure.
+            communities (dict[str, int]): A mapping from node IDs to community IDs.
+
+        Returns:
+            list[str]: A sorted list of bridge node IDs.
+        """
         if not communities:
             return []
 

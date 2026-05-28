@@ -52,7 +52,11 @@ class CodeGenomeTUI(App):
     """
 
     def compose(self) -> ComposeResult:
-        """Create child widgets for the app."""
+        """Create child widgets for the app.
+
+        Returns:
+            ComposeResult: An iterable of widgets to compose the UI.
+        """
         yield Header()
         
         with Container(id="workspace-container"):
@@ -74,7 +78,7 @@ class CodeGenomeTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        """Called when app starts."""
+        """Called when app starts. Initializes widgets and state."""
         self.log_widget = self.query_one(RichLog)
         self.workspace_input = self.query_one("#workspace-input", Input)
         self.active_processes = []
@@ -82,11 +86,19 @@ class CodeGenomeTUI(App):
         self.log_widget.write("Enter a workspace path and click a command to begin.")
 
     def get_workspace_path(self) -> str:
-        """Get the current workspace path from input."""
+        """Get the current workspace path from input.
+
+        Returns:
+            str: The workspace path entered by the user.
+        """
         return self.workspace_input.value
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Event handler called when a button is pressed."""
+        """Event handler called when a button is pressed.
+
+        Args:
+            event (Button.Pressed): The button press event.
+        """
         button_id = event.button.id
         workspace = self.get_workspace_path()
         
@@ -104,13 +116,23 @@ class CodeGenomeTUI(App):
             self.stop_all_processes()
 
     def run_command(self, cmd: list[str], is_background: bool = False) -> None:
-        """Run a CLI command in a worker."""
+        """Run a CLI command in a worker.
+
+        Args:
+            cmd (list[str]): The command list to execute.
+            is_background (bool, optional): Whether to run the process in the background. Defaults to False.
+        """
         command_str = " ".join(cmd)
         self.log_widget.write(f"\n[bold blue]> Running:[/bold blue] {command_str}")
         self.run_worker(self._execute_process(cmd, is_background), exclusive=False)
 
     async def _execute_process(self, cmd: list[str], is_background: bool) -> None:
-        """Execute subprocess asynchronously."""
+        """Execute subprocess asynchronously.
+
+        Args:
+            cmd (list[str]): The command list to execute.
+            is_background (bool): Whether the process should run in the background.
+        """
         worker = get_current_worker()
         
         try:
@@ -168,6 +190,7 @@ class CodeGenomeTUI(App):
         self.active_processes.clear()
 
 def main():
+    """Entry point for the CodeGenome TUI."""
     app = CodeGenomeTUI()
     app.run()
 
