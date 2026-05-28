@@ -532,19 +532,19 @@
             <div class="section-title">Codebase Metrics</div>
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-val">{{ stats.node_count }}</div>
+                    <div class="stat-val" id="stat-nodes">{{ stats.node_count }}</div>
                     <div class="stat-lbl">Total Entities</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-val">{{ stats.edge_count }}</div>
+                    <div class="stat-val" id="stat-edges">{{ stats.edge_count }}</div>
                     <div class="stat-lbl">Dependencies</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-val">{{ stats.file_count }}</div>
+                    <div class="stat-val" id="stat-files">{{ stats.file_count }}</div>
                     <div class="stat-lbl">Files / Modules</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-val">{{ stats.symbol_count }}</div>
+                    <div class="stat-val" id="stat-symbols">{{ stats.symbol_count }}</div>
                     <div class="stat-lbl">Symbols / Functions</div>
                 </div>
             </div>
@@ -820,12 +820,14 @@
                     const stats = newData.metadata.statistics;
                     const elNodes = document.getElementById('stat-nodes');
                     const elEdges = document.getElementById('stat-edges');
-                    const elComm = document.getElementById('stat-communities');
+                    const elFiles = document.getElementById('stat-files');
+                    const elSymbols = document.getElementById('stat-symbols');
                     const elUpdated = document.getElementById('stat-updated');
                     
                     if (elNodes) elNodes.innerText = stats.node_count || rawNodes.length;
                     if (elEdges) elEdges.innerText = stats.edge_count || rawEdges.length;
-                    if (elComm) elComm.innerText = stats.community_count || 0;
+                    if (elFiles) elFiles.innerText = stats.file_count || 0;
+                    if (elSymbols) elSymbols.innerText = stats.symbol_count || 0;
                     
                     if (elUpdated) {
                         const now = new Date();
