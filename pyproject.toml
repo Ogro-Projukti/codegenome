@@ -39,6 +39,7 @@ dependencies = [
   "click",
   "jinja2",
   "websockets",
+  "textual",
 ]
 
 [project.optional-dependencies]

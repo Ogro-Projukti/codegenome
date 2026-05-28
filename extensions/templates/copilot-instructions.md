@@ -1,13 +1,23 @@
-# Watcher knowledge graph (MCP)
+# CodeGenome Knowledge Graph (MCP)
 
-This project has a Watcher knowledge graph at `.genome/`.
+You are operating within a repository analyzed by CodeGenome, an architectural knowledge graph tool. This project contains a `.genome/` directory.
 
-For codebase, architecture, dependency, or symbol questions:
+## Core Directives
 
-1. When `.genome/watcher.db` exists and MCP is healthy, you **MUST use the Watcher MCP server** to understand the codebase during any audit or analysis (`watcher` on `http://127.0.0.1:{{MCP_PORT}}/mcp`).
-2. Prefer MCP tools over raw grep or reading entire files:
-   - `search_nodes`, `get_neighbors`, `get_entry_points`, `get_dead_code`
-   - `get_circular_deps`, `get_god_nodes`, `get_complexity`, `get_churn`
-   - `get_graph`, `get_timeline`, `get_changes`
-3. If MCP returns empty data, run **Watcher: Build Graph** before falling back to file search.
-4. After code changes, keep the graph current via **Watcher: Build Graph** or watch mode.
+1. **Mandatory MCP Usage**: When `.genome/watcher.db` exists and the MCP server is healthy, you MUST use the CodeGenome MCP server (`watcher` on `http://127.0.0.1:{{MCP_PORT}}/mcp`) for all codebase, architecture, dependency, or symbol queries.
+2. **Prefer Graph over Grep**: Use the graph tools instead of raw file searching (`grep`) or reading entire files blindly. The graph provides semantic understanding.
+3. **Fallback Gracefully**: If MCP tools return empty data, instruct the user to run `codegenome analyze` before resorting to standard text searches.
+4. **Keep Context Fresh**: After modifying code files, remind the user to run `codegenome analyze` or start the live evolution server `codegenome evolve --live` to keep the graph updated.
+
+## Available MCP Capabilities
+
+- **Discovery**: `search_nodes` (find symbols)
+- **Relationships**: `get_neighbors` (imports, callers, callees)
+- **Architecture**: `get_entry_points`, `get_dead_code`, `get_circular_deps`, `get_god_nodes`
+- **Metrics**: `get_complexity`, `get_churn`, `get_graph` (summary statistics)
+- **Evolution**: `get_timeline`, `get_changes` (architectural diffs)
+
+## Constraints & Behaviors
+
+- Only read `.genome/graph.json` or `.genome/exports/*.md` directly if the MCP server is unavailable or fails to surface enough context.
+- Verify your MCP usage by monitoring tool call success. If a tool fails due to connection issues, politely ask the user to start the MCP server: `codegenome mcp-start`.

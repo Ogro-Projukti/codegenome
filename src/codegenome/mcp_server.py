@@ -80,11 +80,11 @@ def error(message: str, *, data: Any = None) -> dict[str, Any]:
 
 
 def parse_args(argv: list[str] | None = None) -> ServerConfig:
-    parser = argparse.ArgumentParser(description="Watcher MCP graph server")
+    parser = argparse.ArgumentParser(description="CodeGenome MCP graph server")
     parser.add_argument(
         "--db-path",
         default=os.getenv(ENV_DB_PATH, "test.db"),
-        help="Path to the Watcher timeline SQLite database",
+        help="Path to the CodeGenome timeline SQLite database",
     )
     parser.add_argument(
         "--host",
@@ -133,7 +133,7 @@ def validate_config(config: ServerConfig) -> None:
 
     if not host.is_loopback:
         raise ValueError(
-            f"Watcher MCP server is localhost-only; refusing to bind to {config.host}"
+            f"CodeGenome MCP server is localhost-only; refusing to bind to {config.host}"
         )
 
     if config.port <= 0 or config.port > 65535:
@@ -269,11 +269,11 @@ def create_server(
     tracker = activity or McpActivityTracker()
 
     mcp = FastMCP(
-        name="Watcher Graph",
+        name="CodeGenome Graph",
         instructions=(
-            "Query the Watcher codebase knowledge graph. "
+            "Query the CodeGenome codebase knowledge graph. "
             "For architecture, dependency, symbol, dead-code, or entry-point questions, "
-            "prefer Watcher MCP tools over reading raw files or grep. "
+            "prefer CodeGenome MCP tools over reading raw files or grep. "
             "All tool responses use a JSON envelope with status, data, and error fields."
         ),
     )

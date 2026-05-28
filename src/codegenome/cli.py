@@ -156,5 +156,68 @@ def evolve(path: str, live: bool):
             live_server.stop()
 
 
+@cli.command()
+@click.option(
+    "--client",
+    multiple=True,
+    type=click.Choice(["cursor", "copilot", "windsurf", "agents", "all"], case_sensitive=False),
+    help="Target AI client to generate rules for (repeatable). Use 'all' for all clients."
+)
+@click.option(
+    "--port",
+    type=int,
+    default=7331,
+    help="MCP server port to embed in the generated rules."
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print target paths without writing files."
+)
+@click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
+def rules(client: tuple[str], port: int, dry_run: bool, path: str):
+    """Generate agent rules (e.g. .cursorrules, AGENTS.md) pointing to the MCP server."""
+    from codegenome.rules import generate_rules
+    import os
+    
+    workspace = Path(path).resolve()
+    
+    # default to all if no clients provided
+    selected = list(client) if client else ["all"]
+    
+    click.echo(f"Generating rules for workspace {workspace} (MCP Port: {port})...")
+    
+    try:
+        results = generate_rules(
+            selected_clients=selected,
+            port=port,
+            workspace=workspace,
+            dry_run=dry_run
+        )
+        
+        if not results:
+            click.echo("No clients selected or found.")
+            return
+
+        action = "Would generate" if dry_run else "Generated"
+        for label, out_path in results:
+            # try to make path relative to workspace for cleaner output
+            try:
+                rel_path = out_path.relative_to(workspace)
+                click.echo(f"{action} {label} rules at: {rel_path}")
+            except ValueError:
+                click.echo(f"{action} {label} rules at: {out_path}")
+                
+    except Exception as e:
+        click.echo(f"Error generating rules: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+def tui():
+    """Launch the interactive Textual TUI dashboard."""
+    from codegenome.tui import main as tui_main
+    tui_main()
+
 if __name__ == "__main__":
     cli()
