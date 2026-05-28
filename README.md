@@ -34,7 +34,12 @@ Keep your codebase intelligence fresh in real-time. As you write code, Codegenom
 </div>
 
 ### 🖥️ Rich Terminal User Interface (TUI)
-Interact with your codebase's architecture and timeline effortlessly through our built-in terminal UI. Explore connections and insights without ever leaving your terminal.
+Interact with your codebase's architecture and timeline effortlessly through our built-in terminal UI. Explore connections and insights without ever leaving your terminal. **For the best and most intuitive user experience (UX), we highly recommend using the TUI.**
+
+To launch the TUI, simply run:
+```bash
+codegenome tui
+```
 
 <div align="center">
   <img src="assets/tui.png" alt="Codegenome TUI" width="80%" />
@@ -61,13 +66,26 @@ pip install codegenome
 
 # Build your first graph in any project directory
 cd /path/to/your/project
-codegenome --workspace . --build
+codegenome analyze .
 
-# Run in watch mode with MCP for local AI agents
-codegenome --workspace . --build --mcp --watch
+# Export your graph
+codegenome export --format obsidian --path .
+
+# Run in watch mode with live graph web UI
+codegenome evolve --live .
 ```
 
 > **Note**: For detailed CLI reference, installation guides, and MCP setup, see our comprehensive [Documentation](#-documentation).
+
+## 🛠️ Troubleshooting
+
+### 1. "No graph found" or Missing Database
+**Symptom:** When attempting to run the MCP server (`codegenome mcp-start`) or export the graph (`codegenome export`), you receive an error that no graph was found or `.genome/watcher.db` does not exist.
+**Solution:** Codegenome needs to build its initial knowledge graph database before it can be served or exported. Always run `codegenome analyze .` in your workspace first to generate the graph.
+
+### 2. "unrecognized arguments" CLI Error
+**Symptom:** You try to run commands and receive an `unrecognized arguments` error (e.g., mixing `--workspace` flags with `export` subcommands).
+**Solution:** The unified CLI (`codegenome`) uses modern subcommands (e.g., `codegenome analyze .`, `codegenome mcp-start`, `codegenome tui`). If you are following older documentation that uses flags like `--workspace . --build`, you must invoke the Python module directly using `python -m codegenome --workspace . --build`. Avoid mixing the modular subcommands with the legacy flag-based CLI.
 
 ## 📚 Documentation
 
