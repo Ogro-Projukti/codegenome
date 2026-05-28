@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from codegenome.builder import GraphBuilder, file_node_id, symbol_node_id

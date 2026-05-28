@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import networkx as nx
-
 from codegenome.builder import GraphBuilder, file_node_id
 from codegenome.clusterer import GraphClusterer
 from codegenome.graph_api import Graph
