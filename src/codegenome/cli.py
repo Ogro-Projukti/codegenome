@@ -93,5 +93,68 @@ def mcp_start(path: str):
     from codegenome.mcp_server import main as mcp_main
     sys.exit(mcp_main(["--db-path", str(db_path), "--transport", "stdio"]))
 
+@cli.command()
+@click.option("--live", is_flag=True, help="Enable WebSocket real-time broadcast.")
+@click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
+def evolve(path: str, live: bool):
+    """Start real-time architectural observer and open live UI."""
+    import time
+    import threading
+    import webbrowser
+    from http.server import SimpleHTTPRequestHandler
+    from socketserver import TCPServer
+    from watchdog.observers import Observer
+    from codegenome.watcher import WatcherConfig, WatcherEngine, SurgicalUpdateHandler
+
+    workspace = Path(path).resolve()
+    config = WatcherConfig(workspace=workspace, export_formats=("json", "html"))
+    engine = WatcherEngine(config)
+    
+    click.echo(f"Running initial build for {workspace}...")
+    engine.build(full=False)
+    
+    live_server = None
+    if live:
+        from codegenome.live_server import LiveGraphServer
+        live_server = LiveGraphServer(host="127.0.0.1", port=8765)
+        live_server.start_background()
+        click.echo("WebSocket server initialized on ws://127.0.0.1:8765")
+    
+    def serve_forever():
+        import os
+        os.chdir(engine.export_dir)
+        # Suppress logging in SimpleHTTPRequestHandler to keep terminal clean
+        class QuietHandler(SimpleHTTPRequestHandler):
+            def log_message(self, format, *args):
+                pass
+        with TCPServer(("", 8000), QuietHandler) as httpd:
+            httpd.serve_forever()
+            
+    server_thread = threading.Thread(target=serve_forever, daemon=True)
+    server_thread.start()
+    
+    url = "http://localhost:8000/graph.html?live=1"
+    click.echo(f"HTTP Server started. Opening live graph UI at {url}...")
+    webbrowser.open(url)
+    
+    click.echo("Watching for .py file changes (Press Ctrl+C to stop)...")
+    observer = Observer()
+    handler = SurgicalUpdateHandler(engine, live_server=live_server)
+    observer.schedule(handler, str(workspace), recursive=True)
+    observer.start()
+    
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        click.echo("\nStopping observer...")
+        observer.stop()
+    finally:
+        observer.join()
+        engine.close()
+        if live_server:
+            live_server.stop()
+
+
 if __name__ == "__main__":
     cli()

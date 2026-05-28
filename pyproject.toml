@@ -38,6 +38,7 @@ dependencies = [
   "python-igraph",
   "click",
   "jinja2",
+  "websockets",
 ]
 
 [project.optional-dependencies]

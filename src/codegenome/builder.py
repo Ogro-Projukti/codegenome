@@ -29,45 +29,60 @@ class GraphBuilder:
         self,
         scan: ScanResult,
         parses: dict[str, ParseResult],
-    ) -> Graph:
+    ) -> tuple[Graph, dict[str, set[str]], dict[str, set[str]]]:
         self.graph.clear()
         now = time.time()
+        provides: dict[str, set[str]] = {}
+        consumes: dict[str, set[str]] = {}
         for record in scan.files:
             self._add_file_node(record, now)
         for path, parse_result in parses.items():
-            self._add_parse_result(path, parse_result, now)
-        return self.graph
+            provides[path] = set()
+            consumes[path] = set()
+            self._add_parse_result(path, parse_result, now, provides[path], consumes[path])
+        return self.graph, provides, consumes
 
     def update(
         self,
         scan: ScanResult,
         parses: dict[str, ParseResult],
-    ) -> Graph:
+    ) -> tuple[Graph, dict[str, set[str]], dict[str, set[str]]]:
         now = time.time()
+
+        provides: dict[str, set[str]] = {}
+        consumes: dict[str, set[str]] = {}
 
         for deleted_path in scan.deleted:
             self._remove_file_subgraph(deleted_path)
+            provides[deleted_path] = set()
+            consumes[deleted_path] = set()
 
         for record in scan.files:
             rel_path = record.path
             if rel_path in scan.added:
                 self._add_file_node(record, now)
                 if rel_path in parses:
-                    self._add_parse_result(rel_path, parses[rel_path], now)
+                    provides[rel_path] = set()
+                    consumes[rel_path] = set()
+                    self._add_parse_result(rel_path, parses[rel_path], now, provides[rel_path], consumes[rel_path])
             elif rel_path in scan.modified:
                 self._remove_file_subgraph(rel_path)
                 self._add_file_node(record, now, churn_delta=1)
                 if rel_path in parses:
-                    self._add_parse_result(rel_path, parses[rel_path], now)
+                    provides[rel_path] = set()
+                    consumes[rel_path] = set()
+                    self._add_parse_result(rel_path, parses[rel_path], now, provides[rel_path], consumes[rel_path])
             elif rel_path in scan.unchanged:
                 file_id = file_node_id(rel_path)
                 if self.graph.has_node(file_id):
                     self.graph.set_node_attr(file_id, "last_seen", now)
                 elif rel_path in parses:
+                    provides[rel_path] = set()
+                    consumes[rel_path] = set()
                     self._add_file_node(record, now)
-                    self._add_parse_result(rel_path, parses[rel_path], now)
+                    self._add_parse_result(rel_path, parses[rel_path], now, provides[rel_path], consumes[rel_path])
 
-        return self.graph
+        return self.graph, provides, consumes
 
     def _remove_file_subgraph(self, path: str) -> None:
         file_id = file_node_id(path)
@@ -95,7 +110,7 @@ class GraphBuilder:
             churn=churn,
         )
 
-    def _add_parse_result(self, path: str, result: ParseResult, timestamp: float) -> None:
+    def _add_parse_result(self, path: str, result: ParseResult, timestamp: float, provides: set[str], consumes: set[str]) -> None:
         file_id = file_node_id(path)
         if not self.graph.has_node(file_id):
             self.graph.add_node(
@@ -112,13 +127,13 @@ class GraphBuilder:
             self.graph.set_node_attr(file_id, "parse_errors", list(result.errors))
 
         for symbol in result.symbols:
-            self._add_symbol(path, file_id, symbol, timestamp)
+            self._add_symbol(path, file_id, symbol, timestamp, provides)
         for imp in result.imports:
-            self._add_import(path, file_id, imp, timestamp)
+            self._add_import(path, file_id, imp, timestamp, consumes)
         for inherit in result.inheritance:
-            self._add_inheritance(path, inherit, timestamp)
+            self._add_inheritance(path, inherit, timestamp, consumes)
         for call in result.calls:
-            self._add_call(path, call, timestamp)
+            self._add_call(path, call, timestamp, consumes)
 
     def _add_symbol(
         self,
@@ -126,8 +141,10 @@ class GraphBuilder:
         file_id: str,
         symbol: ParsedSymbol,
         timestamp: float,
+        provides: set[str]
     ) -> None:
         qname = symbol.qualified_name or symbol.name
+        provides.add(qname)
         node_id = symbol_node_id(path, qname)
         self.graph.add_node(
             node_id,
@@ -152,8 +169,14 @@ class GraphBuilder:
         file_id: str,
         imp: ParsedImport,
         timestamp: float,
+        consumes: set[str]
     ) -> None:
         import_id = f"import:{path}:{imp.start_line}:{imp.module}"
+        if imp.names:
+            for name in imp.names:
+                consumes.add(f"{imp.module}.{name}" if imp.module else name)
+        elif imp.module:
+            consumes.add(imp.module)
         self.graph.add_node(
             import_id,
             node_type="import",
@@ -173,7 +196,9 @@ class GraphBuilder:
         path: str,
         inherit: ParsedInheritance,
         timestamp: float,
+        consumes: set[str]
     ) -> None:
+        consumes.add(inherit.base)
         child_candidates = [
             node
             for node, attrs in self.graph.iter_nodes()
@@ -181,35 +206,40 @@ class GraphBuilder:
             and attrs.get("node_type") == "symbol"
             and attrs.get("name") == inherit.class_name
         ]
-        base_id = f"external:{inherit.base}"
+        base_id = f"proxy:{path}:{inherit.base}"
         if not self.graph.has_node(base_id):
             self.graph.add_node(
                 base_id,
-                node_type="external",
+                node_type="proxy",
                 name=inherit.base,
+                file_path=path,
                 first_seen=timestamp,
                 last_seen=timestamp,
                 churn=0,
+                is_broken=False,
             )
         for child_id in child_candidates:
             self.graph.add_edge(child_id, base_id, edge_type="inherits", line=inherit.line)
 
-    def _add_call(self, path: str, call: ParsedCall, timestamp: float) -> None:
-        caller_id = self._resolve_symbol_id(path, call.caller)
-        callee_id = self._resolve_symbol_id(path, call.callee) or f"external:{call.callee}"
+    def _add_call(self, path: str, call: ParsedCall, timestamp: float, consumes: set[str]) -> None:
+        caller_id = self._resolve_local_symbol_id(path, call.caller)
+        consumes.add(call.callee)
+        callee_id = self._resolve_local_symbol_id(path, call.callee) or f"proxy:{path}:{call.callee}"
         if not self.graph.has_node(callee_id):
             self.graph.add_node(
                 callee_id,
-                node_type="external",
+                node_type="proxy",
                 name=call.callee,
+                file_path=path,
                 first_seen=timestamp,
                 last_seen=timestamp,
                 churn=0,
+                is_broken=False,
             )
         if caller_id and self.graph.has_node(caller_id):
             self.graph.add_edge(caller_id, callee_id, edge_type="calls", line=call.line)
 
-    def _resolve_symbol_id(self, path: str, qualified_name: str) -> str | None:
+    def _resolve_local_symbol_id(self, path: str, qualified_name: str) -> str | None:
         exact = symbol_node_id(path, qualified_name)
         if self.graph.has_node(exact):
             return exact

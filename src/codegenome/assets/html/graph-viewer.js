@@ -157,9 +157,28 @@
     }
 
     await pollLiveGraph(true);
-    pollTimer = window.setInterval(() => {
-      void pollLiveGraph(false);
-    }, config.livePollMs || LIVE_POLL_MS);
+    
+    const ws = new WebSocket('ws://localhost:8765');
+    ws.onopen = () => {
+      console.log('WebSocket connected for live updates');
+    };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'graph_delta') {
+          // Trigger a fast HTTP fetch to get the full updated JSON and apply vis.js diffs
+          void pollLiveGraph(false);
+        }
+      } catch (e) {
+        console.error('WebSocket message parse error', e);
+      }
+    };
+    ws.onclose = () => {
+      console.log('WebSocket disconnected, falling back to polling');
+      pollTimer = window.setInterval(() => {
+        void pollLiveGraph(false);
+      }, config.livePollMs || LIVE_POLL_MS);
+    };
   }
 
   function readEmbeddedGraph() {

@@ -478,9 +478,34 @@
         .instructions-card strong {
             color: #ecfdf5;
         }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid var(--accent);
+            padding: 12px 24px;
+            border-radius: 12px;
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px var(--accent-glow);
+            transition: opacity 0.3s, transform 0.3s;
+            pointer-events: none;
+        }
+
+        .toast.hidden {
+            opacity: 0;
+            transform: translate(-50%, 20px);
+        }
     </style>
 </head>
 <body>
+    <div id="toast" class="toast hidden"></div>
     <div id="loader-overlay" class="loader-overlay">
         <div class="bio-loader">
             <div class="cell core"></div>
@@ -609,6 +634,8 @@
         let maxMetrics = { in: 0, out: 0, churn: 0, comp: 0 };
 
         function calculateMetrics() {
+            graphMetrics.clear();
+            maxMetrics = { in: 0, out: 0, churn: 0, comp: 0 };
             rawNodes.forEach(n => {
                 graphMetrics.set(n.id, { in: 0, out: 0, churn: n.churn || 0, comp: n.complexity || 0, bridge: n.is_bridge });
             });
@@ -625,6 +652,8 @@
         }
 
         function parseGraphData() {
+            nodeMap.clear();
+            childToParent.clear();
             rawNodes.forEach(n => nodeMap.set(n.id, n));
             rawEdges.forEach(e => {
                 if (e.edge_type === 'contains') {
@@ -758,12 +787,84 @@
             dataset.update(newData);
         }
 
+        function showDeltaToast(delta) {
+            const toast = document.getElementById('toast');
+            if (!toast) return;
+            
+            const parts = [];
+            if (delta.added_nodes && delta.added_nodes.length) parts.push(`+${delta.added_nodes.length} node(s)`);
+            if (delta.removed_nodes && delta.removed_nodes.length) parts.push(`-${delta.removed_nodes.length} node(s)`);
+            if (delta.modified_nodes && delta.modified_nodes.length) parts.push(`${delta.modified_nodes.length} changed`);
+            if (delta.added_edges && delta.added_edges.length) parts.push(`+${delta.added_edges.length} edge(s)`);
+            
+            if (parts.length === 0) return;
+
+            toast.innerText = `Graph Evolved: ${parts.join(', ')}`;
+            toast.classList.remove('hidden');
+            
+            if (toast.timeoutId) clearTimeout(toast.timeoutId);
+            toast.timeoutId = setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3500);
+        }
+
+        async function fetchGraphData() {
+            try {
+                // To avoid caching issues
+                const response = await fetch('/graph.json?t=' + Date.now());
+                const newData = await response.json();
+                rawNodes = newData.nodes || [];
+                rawEdges = newData.edges || [];
+                
+                if (newData.metadata && newData.metadata.statistics) {
+                    const stats = newData.metadata.statistics;
+                    const elNodes = document.getElementById('stat-nodes');
+                    const elEdges = document.getElementById('stat-edges');
+                    const elComm = document.getElementById('stat-communities');
+                    const elUpdated = document.getElementById('stat-updated');
+                    
+                    if (elNodes) elNodes.innerText = stats.node_count || rawNodes.length;
+                    if (elEdges) elEdges.innerText = stats.edge_count || rawEdges.length;
+                    if (elComm) elComm.innerText = stats.community_count || 0;
+                    
+                    if (elUpdated) {
+                        const now = new Date();
+                        elUpdated.innerText = now.getHours().toString().padStart(2, '0') + ':' + 
+                                              now.getMinutes().toString().padStart(2, '0') + ':' + 
+                                              now.getSeconds().toString().padStart(2, '0');
+                    }
+                }
+
+                calculateMetrics();
+                parseGraphData();
+                refreshGraphState();
+            } catch (err) {
+                console.error("Failed to fetch live graph:", err);
+            }
+        }
+
         function initNetwork() {
             // Fix: Calculate metrics and parse data BEFORE initializing the network,
             // otherwise nodeMap is empty and click details won't show!
             calculateMetrics();
             parseGraphData();
             refreshGraphState();
+
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('live') === '1') {
+                const liveWs = new WebSocket('ws://' + window.location.hostname + ':8765');
+                liveWs.onmessage = (event) => {
+                    try {
+                        const payload = JSON.parse(event.data);
+                        if (payload.type === 'graph_delta') {
+                            showDeltaToast(payload);
+                            fetchGraphData();
+                        }
+                    } catch (e) {
+                        console.error('WebSocket message parse error', e);
+                    }
+                };
+            }
 
             const container = document.getElementById('network-view');
             const data = { nodes: nodesDataset, edges: edgesDataset };

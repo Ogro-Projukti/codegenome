@@ -8,6 +8,7 @@ import networkx as nx
 
 from codegenome.builder import file_node_id
 from codegenome.graph_api import Graph
+from codegenome.registry import GlobalDependencyRegistry
 
 
 @dataclass(frozen=True)
@@ -35,9 +36,11 @@ class GraphIntelligence:
         self,
         graph: Graph,
         *,
+        registry: GlobalDependencyRegistry | None = None,
         god_node_stddevs: float = 1.0,
     ) -> None:
         self.graph = graph
+        self.registry = registry
         self.god_node_stddevs = god_node_stddevs
 
     def analyze(self) -> IntelligenceReport:
@@ -104,6 +107,12 @@ class GraphIntelligence:
                 continue
             in_degree = self.graph.in_degree(node)
             out_degree = self.graph.out_degree(node)
+            
+            if self.registry and attrs.get("node_type") == "symbol":
+                fqn = attrs.get("qualified_name") or attrs.get("name")
+                if fqn:
+                    in_degree += len(self.registry.get_dependents(fqn))
+
             scores[node] = float(in_degree + out_degree)
 
         if not scores:
@@ -204,13 +213,27 @@ class GraphIntelligence:
         return entries
 
     def _file_import_graph(self) -> nx.DiGraph:
-        module_index = self._module_to_file_index()
         file_graph = nx.DiGraph()
 
         for node, attrs in self.graph.iter_nodes():
             if attrs.get("node_type") == "file":
                 file_graph.add_node(node)
 
+        if self.registry:
+            for file_path, entry in self.registry.files.items():
+                source_id = file_node_id(file_path)
+                if source_id not in file_graph:
+                    file_graph.add_node(source_id)
+                for fqn in entry.consumes:
+                    target_path = self.registry.get_provider(fqn)
+                    if target_path and target_path != file_path:
+                        target_id = file_node_id(target_path)
+                        if target_id not in file_graph:
+                            file_graph.add_node(target_id)
+                        file_graph.add_edge(source_id, target_id)
+            return file_graph
+
+        module_index = self._module_to_file_index()
         for source, target, edge_attrs in self.graph.iter_edges():
             if edge_attrs.get("edge_type") != "imports":
                 continue
@@ -232,13 +255,27 @@ class GraphIntelligence:
         return file_graph
 
     def _file_dependency_graph(self) -> nx.Graph:
-        module_index = self._module_to_file_index()
         dependency = nx.Graph()
 
         for node, attrs in self.graph.iter_nodes():
             if attrs.get("node_type") == "file":
                 dependency.add_node(node)
 
+        if self.registry:
+            for file_path, entry in self.registry.files.items():
+                source_id = file_node_id(file_path)
+                if source_id not in dependency:
+                    dependency.add_node(source_id)
+                for fqn in entry.consumes:
+                    target_path = self.registry.get_provider(fqn)
+                    if target_path and target_path != file_path:
+                        target_id = file_node_id(target_path)
+                        if target_id not in dependency:
+                            dependency.add_node(target_id)
+                        dependency.add_edge(source_id, target_id)
+            return dependency
+
+        module_index = self._module_to_file_index()
         for source, target, edge_attrs in self.graph.iter_edges():
             edge_type = edge_attrs.get("edge_type")
             source_attrs = self.graph.get_node(source) if self.graph.has_node(source) else {}
