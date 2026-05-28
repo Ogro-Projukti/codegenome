@@ -87,15 +87,15 @@ class GraphTimeline:
                 node_rows,
             )
 
-        edge_rows = [
-            (
+        edge_rows_dict = {}
+        for source, target, edge_attrs in graph.iter_edges():
+            edge_rows_dict[(source, target)] = (
                 snapshot_id,
                 source,
                 target,
                 json.dumps(edge_attrs, sort_keys=True),
             )
-            for source, target, edge_attrs in graph.iter_edges()
-        ]
+        edge_rows = list(edge_rows_dict.values())
         if edge_rows:
             self._conn.executemany(
                 """

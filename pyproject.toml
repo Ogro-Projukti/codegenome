@@ -36,6 +36,7 @@ dependencies = [
   "radon",
   "leidenalg",
   "python-igraph",
+  "click",
 ]
 
 [project.optional-dependencies]
@@ -49,7 +50,7 @@ Repository = "https://github.com/watcher-dev/codegenome"
 Issues = "https://github.com/watcher-dev/codegenome/issues"
 
 [project.scripts]
-codegenome = "codegenome.__main__:main"
+codegenome = "codegenome.cli:cli"
 
 [tool.setuptools]
 include-package-data = true
