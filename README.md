@@ -10,9 +10,9 @@
   </p>
 
   <p>
-    <a href="https://github.com/Ogro-Projukti/codegenome/actions"><img src="https://img.shields.io/github/actions/workflow/status/Ogro-Projukti/codegenome/main.yml?style=flat-square" alt="Build Status"></a>
+    <a href="https://github.com/watcher-dev/codegenome/actions"><img src="https://img.shields.io/github/actions/workflow/status/watcher-dev/codegenome/main.yml?style=flat-square" alt="Build Status"></a>
     <a href="https://pypi.org/project/codegenome/"><img src="https://img.shields.io/pypi/v/codegenome?style=flat-square" alt="PyPI Version"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/Ogro-Projukti/codegenome?style=flat-square" alt="License"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/watcher-dev/codegenome?style=flat-square" alt="License"></a>
   </p>
 </div>
 
