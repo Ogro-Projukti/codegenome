@@ -384,6 +384,20 @@ h1, h2, h3 {
   box-shadow: 0 10px 20px rgba(0, 255, 170, 0.1);
 }
 
+.feature-icon {
+  margin-bottom: 1.25rem;
+  color: var(--accent-color);
+  width: 36px;
+  height: 36px;
+  filter: drop-shadow(0 0 10px rgba(0, 255, 170, 0.4));
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.feature-card:hover .feature-icon {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 15px rgba(0, 255, 170, 0.8));
+}
+
 .feature-title {
   font-size: 1.25rem;
   margin-bottom: 1rem;
