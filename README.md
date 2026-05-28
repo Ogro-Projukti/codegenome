@@ -6,13 +6,14 @@
   <h1>Codegenome</h1>
 
   <p>
-    <strong>Open-source CLI for building, exporting, and querying local codebase knowledge graphs.</strong>
+    <strong>Open-source CLI for building, exporting, and querying local codebase knowledge graphs.</strong><br>
+    🌍 <strong>Website:</strong> <a href="https://codegenome.pages.dev/">codegenome.pages.dev</a>
   </p>
 
   <p>
-    <a href="https://github.com/watcher-dev/codegenome/actions"><img src="https://img.shields.io/github/actions/workflow/status/watcher-dev/codegenome/main.yml?style=flat-square" alt="Build Status"></a>
+    <a href="https://github.com/Ogro-Projukti/codegenome/actions"><img src="https://img.shields.io/github/actions/workflow/status/Ogro-Projukti/codegenome/main.yml?style=flat-square" alt="Build Status"></a>
     <a href="https://pypi.org/project/codegenome/"><img src="https://img.shields.io/pypi/v/codegenome?style=flat-square" alt="PyPI Version"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/watcher-dev/codegenome?style=flat-square" alt="License"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/Ogro-Projukti/codegenome?style=flat-square" alt="License"></a>
   </p>
 </div>
 
