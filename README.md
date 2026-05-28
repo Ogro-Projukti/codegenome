@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/header.png" alt="Codegenome Header" width="100%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/header.png" alt="Codegenome Header" width="100%" />
 
   <br />
 
@@ -13,7 +13,7 @@
   <p>
     <a href="https://github.com/Ogro-Projukti/codegenome/actions"><img src="https://img.shields.io/github/actions/workflow/status/Ogro-Projukti/codegenome/main.yml?style=flat-square" alt="Build Status"></a>
     <a href="https://pypi.org/project/codegenome/"><img src="https://img.shields.io/pypi/v/codegenome?style=flat-square" alt="PyPI Version"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/Ogro-Projukti/codegenome?style=flat-square" alt="License"></a>
+    <a href="https://github.com/Ogro-Projukti/codegenome/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Ogro-Projukti/codegenome?style=flat-square" alt="License"></a>
   </p>
 </div>
 
@@ -30,8 +30,8 @@ Codegenome deeply understands your code. It parses your source files, incrementa
 Keep your codebase intelligence fresh in real-time. As you write code, Codegenome watches your workspace and automatically updates the graph, so your agents and queries are never out of sync.
 
 <div align="center">
-  <img src="assets/live-graph-1.png" alt="Live Graph Visualization" width="48%" />
-  <img src="assets/live-graph-2.png" alt="Live Graph Detail" width="48%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/live-graph-1.png" alt="Live Graph Visualization" width="48%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/live-graph-2.png" alt="Live Graph Detail" width="48%" />
 </div>
 
 ### 🖥️ Rich Terminal User Interface (TUI)
@@ -43,7 +43,7 @@ codegenome tui
 ```
 
 <div align="center">
-  <img src="assets/tui.png" alt="Codegenome TUI" width="80%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/tui.png" alt="Codegenome TUI" width="80%" />
 </div>
 
 ### 🤖 Seamless AI Agent Integration via MCP
@@ -92,16 +92,16 @@ codegenome evolve --live .
 
 | Doc | Description |
 |-----|-------------|
-| 📖 [CLI reference](docs/cli-reference.md) | Flags, workflows, troubleshooting |
-| ⚙️ [Installation](docs/installation.md) | pip, venv, MCP setup |
-| 🔌 [MCP integration](docs/mcp-integration.md) | Server modes and client installer |
-| 🧩 [Extensions](extensions/README.md) | Cursor rules and Copilot templates |
+| 📖 [CLI reference](https://github.com/Ogro-Projukti/codegenome/blob/main/docs/cli-reference.md) | Flags, workflows, troubleshooting |
+| ⚙️ [Installation](https://github.com/Ogro-Projukti/codegenome/blob/main/docs/installation.md) | pip, venv, MCP setup |
+| 🔌 [MCP integration](https://github.com/Ogro-Projukti/codegenome/blob/main/docs/mcp-integration.md) | Server modes and client installer |
+| 🧩 [Extensions](https://github.com/Ogro-Projukti/codegenome/blob/main/extensions/README.md) | Cursor rules and Copilot templates |
 
 ## ⚖️ License
 
-Codegenome is open-source software licensed under the **[MIT License](LICENSE)**.
+Codegenome is open-source software licensed under the **[MIT License](https://github.com/Ogro-Projukti/codegenome/blob/main/LICENSE)**.
 
 <div align="center">
   <br />
-  <img src="assets/logo.png" alt="Codegenome Logo" width="100" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/logo.png" alt="Codegenome Logo" width="100" />
 </div>
