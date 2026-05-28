@@ -1,135 +1,88 @@
-# Watcher CLI
+<div align="center">
+  <img src="assets/header.png" alt="Codegenome Header" width="100%" />
 
-Open-source command-line tool for building, exporting, and querying **local codebase knowledge graphs**. Watcher scans your repository, extracts symbols and relationships with tree-sitter, stores timeline snapshots in SQLite, and exposes the graph to AI agents through MCP.
+  <br />
 
-Use it headless in CI, on servers, or alongside any editor — no VS Code required.
+  <h1>Codegenome</h1>
 
-## Features
+  <p>
+    <strong>Open-source CLI for building, exporting, and querying local codebase knowledge graphs.</strong>
+  </p>
 
-- **Graph builds** — incremental or full rebuilds with `.genome/graph.json` output
-- **Watch & live modes** — keep the graph fresh as files change
-- **Exports** — JSON, HTML, Markdown, GraphML, Cypher, Obsidian
-- **Timeline & churn** — snapshot diffs and change rankings from SQLite
-- **MCP server** — HTTP or stdio transport for Cursor, Claude, Copilot, and other agents
+  <p>
+    <a href="https://github.com/Ogro-Projukti/codegenome/actions"><img src="https://img.shields.io/github/actions/workflow/status/Ogro-Projukti/codegenome/main.yml?style=flat-square" alt="Build Status"></a>
+    <a href="https://pypi.org/project/codegenome/"><img src="https://img.shields.io/pypi/v/codegenome?style=flat-square" alt="PyPI Version"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/Ogro-Projukti/codegenome?style=flat-square" alt="License"></a>
+  </p>
+</div>
 
-## Quick start
+---
 
-### Install (editable dev)
+**Codegenome** scans your repository, extracts symbols and relationships using `tree-sitter`, stores timeline snapshots in SQLite, and exposes this powerful intelligence to AI agents through MCP (Model Context Protocol). Use it headless in CI, on servers, or alongside any editor—no VS Code required!
+
+## ✨ What Codegenome Can Do
+
+### 🧠 Codebase Intelligence & Graph Building
+Codegenome deeply understands your code. It parses your source files, incrementally builds a knowledge graph, and outputs structured intelligence. Whether you're querying for dependencies or analyzing churn, Codegenome provides the structural truth of your codebase.
+
+### ⚡ Live Graph Visualization & Watch Mode
+Keep your codebase intelligence fresh in real-time. As you write code, Codegenome watches your workspace and automatically updates the graph, so your agents and queries are never out of sync.
+
+<div align="center">
+  <img src="assets/live-graph-1.png" alt="Live Graph Visualization" width="48%" />
+  <img src="assets/live-graph-2.png" alt="Live Graph Detail" width="48%" />
+</div>
+
+### 🖥️ Rich Terminal User Interface (TUI)
+Interact with your codebase's architecture and timeline effortlessly through our built-in terminal UI. Explore connections and insights without ever leaving your terminal.
+
+<div align="center">
+  <img src="assets/tui.png" alt="Codegenome TUI" width="80%" />
+</div>
+
+### 🤖 Seamless AI Agent Integration via MCP
+Codegenome doesn't just build graphs; it acts as an intelligence server for your AI agents (Cursor, Claude, Copilot, etc.). Via HTTP or stdio transport, it serves as a high-fidelity context provider.
+
+### 📤 Versatile Exports
+Need your graph in a different format? Codegenome seamlessly exports to:
+- **JSON**
+- **HTML & Markdown**
+- **GraphML**
+- **Cypher** (for Neo4j)
+- **Obsidian** (for personal knowledge bases)
+
+## 🚀 Quick Start
+
+Get up and running in seconds.
 
 ```bash
-git clone https://github.com/your-org/codegenome.git
-cd codegenome
-python -m venv .venv
+# Install via pip
+pip install codegenome
 
-# Windows
-.venv\Scripts\activate
-pip install -e ".[dev]"
-
-# macOS / Linux
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-### Build your first graph
-
-```bash
+# Build your first graph in any project directory
 cd /path/to/your/project
 codegenome --workspace . --build
-```
 
-Output is written to `.genome/` in the project you analyze (not in the codegenome install directory).
-
-### Verify
-
-```bash
-codegenome --help
-python -m codegenome --help
-```
-
-## Common commands
-
-```bash
-# Full rebuild
-codegenome --workspace . --build --full
-
-# Watch mode with MCP for local AI agents
+# Run in watch mode with MCP for local AI agents
 codegenome --workspace . --build --mcp --watch
-
-# Export selected formats
-codegenome --workspace . --build --export json markdown graphml
-
-# Timeline query (requires prior build)
-codegenome --workspace . --dump-timeline
-
-# Install MCP config for Cursor
-python -m codegenome.installer --db-path "$(pwd)/.genome/watcher.db" --client cursor
 ```
 
-See [docs/cli-reference.md](docs/cli-reference.md) for the full command reference.
+> **Note**: For detailed CLI reference, installation guides, and MCP setup, see our comprehensive [Documentation](#-documentation).
 
-## PyPI dev install
-
-When you publish to TestPyPI or PyPI:
-
-```bash
-pip install build
-python -m build   # builds wheel + sdist (run from repo root; do not use build.py — use PyPA build)
-
-# Local test install from wheel
-pip install dist/codegenome-0.1.0-py3-none-any.whl
-
-# TestPyPI (replace with your index URL / credentials)
-pip install --index-url https://test.pypi.org/simple/ codegenome
-```
-
-Optional standalone binary (PyInstaller):
-
-```bash
-python build_binary.py
-```
-
-## Repository layout
-
-```
-codegenome/
-├── src/codegenome/       # Python package (CLI, engine, MCP)
-│   ├── assets/            # Bundled HTML graph viewer assets
-├── tests/                 # pytest suite
-├── docs/                  # Standalone CLI documentation
-├── extensions/            # Editor/agent integration templates (see README there)
-├── pyproject.toml
-└── README.md
-```
-
-## Development
-
-```bash
-pip install -e ".[dev]"
-pytest
-ruff check src tests
-```
-
-Run the CLI as a module during development:
-
-```bash
-python -m codegenome --workspace . --build
-```
-
-## Relationship to Watcher VS Code
-
-This repository is the **standalone open-source CLI package** (`codegenome` on PyPI, import name `codegenome`).
-
-The Watcher VS Code extension in the main monorepo may bundle a frozen binary built from the same engine. Editor-specific UI, IPC, and extension packaging stay in the extension repo; headless automation and CI use this CLI.
-
-## Documentation
+## 📚 Documentation
 
 | Doc | Description |
 |-----|-------------|
-| [CLI reference](docs/cli-reference.md) | Flags, workflows, troubleshooting |
-| [Installation](docs/installation.md) | pip, venv, MCP setup |
-| [MCP integration](docs/mcp-integration.md) | Server modes and client installer |
-| [Extensions](extensions/README.md) | Cursor rules and Copilot templates |
+| 📖 [CLI reference](docs/cli-reference.md) | Flags, workflows, troubleshooting |
+| ⚙️ [Installation](docs/installation.md) | pip, venv, MCP setup |
+| 🔌 [MCP integration](docs/mcp-integration.md) | Server modes and client installer |
+| 🧩 [Extensions](extensions/README.md) | Cursor rules and Copilot templates |
 
-## License
+## ⚖️ License
 
-MIT — see [LICENSE](LICENSE).
+Codegenome is open-source software licensed under the **[MIT License](LICENSE)**.
+
+<div align="center">
+  <br />
+  <img src="assets/logo.png" alt="Codegenome Logo" width="100" />
+</div>
