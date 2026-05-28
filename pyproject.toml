@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codegenome"
+version = "0.1.0"
+description = "Open-source CLI for building and querying local codebase knowledge graphs"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "Watcher Contributors" }]
+keywords = ["code-analysis", "knowledge-graph", "mcp", "cli", "tree-sitter"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Documentation",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+  "tree-sitter==0.21.3",
+  "tree-sitter-python==0.21.0",
+  "tree-sitter-javascript==0.21.0",
+  "tree-sitter-typescript==0.21.0",
+  "tree-sitter-go==0.21.0",
+  "tree-sitter-rust==0.21.2",
+  "watchdog",
+  "fastmcp",
+  "radon",
+  "leidenalg",
+  "python-igraph",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "ruff", "pyinstaller>=6.0,<7"]
+compat = ["networkx"]
+
+[project.urls]
+Homepage = "https://github.com/watcher-dev/codegenome"
+Documentation = "https://github.com/watcher-dev/codegenome#readme"
+Repository = "https://github.com/watcher-dev/codegenome"
+Issues = "https://github.com/watcher-dev/codegenome/issues"
+
+[project.scripts]
+codegenome = "codegenome.__main__:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+codegenome = [
+  "assets/**/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

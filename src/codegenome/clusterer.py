@@ -1,0 +1,237 @@
+"""Leiden community detection and bridge-node analysis for Watcher graphs."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+import igraph as ig
+import leidenalg
+
+from codegenome.builder import file_node_id
+from codegenome.graph_api import Graph, create_graph
+
+
+@dataclass(frozen=True)
+class ClusterResult:
+    """Community detection output."""
+
+    communities: dict[str, int] = field(default_factory=dict)
+    bridge_nodes: list[str] = field(default_factory=list)
+
+
+class GraphClusterer:
+    """Detect architectural communities and bridge nodes."""
+
+    def __init__(self, *, resolution: float = 1.0) -> None:
+        self.resolution = resolution
+
+    def cluster(self, graph: Graph) -> ClusterResult:
+        clustering_graph = self._clustering_graph(graph)
+        if clustering_graph.number_of_nodes() == 0:
+            return ClusterResult()
+
+        if clustering_graph.number_of_nodes() == 1:
+            node = next(iter(node for node, _ in clustering_graph.iter_nodes()))
+            return ClusterResult(communities={node: 0}, bridge_nodes=[])
+
+        try:
+            ig_graph = clustering_graph.to_igraph()
+        except NotImplementedError:
+            nx_graph = clustering_graph.to_networkx()
+            ig_graph = self._networkx_to_igraph(nx_graph)
+
+        if ig_graph.vcount() == 0:
+            return ClusterResult()
+
+        undirected = ig_graph.as_undirected()
+
+        if undirected.ecount() == 0:
+            communities = {v["name"]: idx for idx, v in enumerate(undirected.vs)}
+            return ClusterResult(communities=communities, bridge_nodes=[])
+
+        partition = leidenalg.find_partition(
+            undirected,
+            leidenalg.RBConfigurationVertexPartition,
+            weights=None,
+            resolution_parameter=self.resolution,
+            seed=42,
+        )
+        
+        node_names = undirected.vs["name"]
+        communities = {
+            node_names[index]: int(partition.membership[index])
+            for index in range(len(node_names))
+        }
+        bridge_nodes = self.detect_bridge_nodes(clustering_graph, communities)
+        return ClusterResult(communities=communities, bridge_nodes=bridge_nodes)
+
+    def annotate(self, graph: Graph) -> Graph:
+        result = self.cluster(graph)
+        file_communities = dict(result.communities)
+        bridge_set = set(result.bridge_nodes)
+
+        for node, attrs in graph.iter_nodes():
+            community_id: int | None = None
+            if node in file_communities:
+                community_id = file_communities[node]
+            else:
+                file_path = attrs.get("file_path")
+                if file_path:
+                    file_id = file_node_id(str(file_path))
+                    community_id = file_communities.get(file_id)
+
+            if community_id is not None:
+                graph.set_node_attr(node, "community_id", community_id)
+            graph.set_node_attr(node, "is_bridge", node in bridge_set)
+
+        return graph
+
+    def detect_bridge_nodes(
+        self,
+        graph: Graph,
+        communities: dict[str, int],
+    ) -> list[str]:
+        if not communities:
+            return []
+
+        bridges: list[str] = []
+        for node, _ in graph.iter_nodes():
+            if node not in communities:
+                continue
+            own_community = communities[node]
+            neighbor_communities = {
+                communities[neighbor]
+                for neighbor in graph.neighbors(node)
+                if neighbor in communities and communities[neighbor] != own_community
+            }
+            if neighbor_communities:
+                bridges.append(node)
+        return sorted(bridges)
+
+    def _clustering_graph(self, graph: Graph) -> Graph:
+        module_index = self._module_to_file_index(graph)
+        file_graph = create_graph("igraph")
+
+        for node, attrs in graph.iter_nodes():
+            if attrs.get("node_type") == "file":
+                file_graph.add_node(node)
+
+        if file_graph.number_of_nodes() == 0:
+            for node, attrs in graph.iter_nodes():
+                if attrs.get("node_type") == "symbol":
+                    file_graph.add_node(node)
+
+        for source, target, edge_attrs in graph.iter_edges():
+            edge_type = edge_attrs.get("edge_type")
+            source_attrs = graph.get_node(source) if graph.has_node(source) else {}
+            target_attrs = graph.get_node(target) if graph.has_node(target) else {}
+
+            if edge_type == "imports" and target_attrs.get("node_type") == "import":
+                source_path = source_attrs.get("file_path")
+                module = str(target_attrs.get("module", ""))
+                if not source_path:
+                    continue
+                target_file = self._resolve_module_to_file(module, source_path, module_index)
+                if not target_file:
+                    continue
+                target_id = file_node_id(target_file)
+                if file_graph.has_node(source) and file_graph.has_node(target_id) and source != target_id:
+                    file_graph.add_edge(source, target_id)
+                continue
+
+            if edge_type != "calls":
+                continue
+
+            source_file = source_attrs.get("file_path")
+            target_file = target_attrs.get("file_path")
+            if not source_file or not target_file or source_file == target_file:
+                continue
+            source_id = file_node_id(source_file)
+            target_id = file_node_id(target_file)
+            if file_graph.has_node(source_id) and file_graph.has_node(target_id):
+                file_graph.add_edge(source_id, target_id)
+
+        return file_graph
+
+    def _module_to_file_index(self, graph: Graph) -> dict[str, str]:
+        index: dict[str, str] = {}
+        for _, attrs in graph.iter_nodes():
+            if attrs.get("node_type") != "file":
+                continue
+            path = str(attrs.get("file_path", ""))
+            if not path:
+                continue
+            normalized = path.replace("\\", "/")
+            stem = normalized.rsplit("/", 1)[-1]
+            if "." in stem:
+                stem = stem.rsplit(".", 1)[0]
+            index[stem] = path
+            without_ext = normalized.rsplit(".", 1)[0]
+            index[without_ext] = path
+            index[normalized] = path
+            index[".".join(without_ext.split("/"))] = path
+            index[without_ext.split("/")[-1]] = path
+        return index
+
+    def _resolve_module_to_file(
+        self,
+        module: str,
+        source_path: str,
+        module_index: dict[str, str],
+    ) -> str | None:
+        module = module.strip()
+        if not module:
+            return None
+
+        normalized = module.replace("\\", "/")
+        candidates = [
+            normalized,
+            normalized.replace(".", "/"),
+            f"{normalized.replace('.', '/')}.py",
+        ]
+        if module.startswith("."):
+            source_dir = source_path.replace("\\", "/").rsplit("/", 1)[0]
+            pieces = [part for part in module.split(".") if part]
+            rel = source_dir
+            for piece in pieces:
+                if piece == "":
+                    rel = rel.rsplit("/", 1)[0] if rel and rel != "." else ""
+                else:
+                    rel = f"{rel}/{piece}".strip("/") if rel and rel != "." else piece
+            candidates.extend([rel, f"{rel}.py"])
+
+        for candidate in candidates:
+            candidate = candidate.strip("/")
+            if candidate in module_index:
+                return module_index[candidate]
+            stem = candidate.rsplit("/", 1)[-1]
+            if "." in stem:
+                stem = stem.rsplit(".", 1)[0]
+            if stem in module_index:
+                return module_index[stem]
+        return None
+
+    def _networkx_to_igraph(self, graph: Any) -> ig.Graph:
+        """Convert a NetworkX graph to igraph for compatibility."""
+        node_ids = list(graph.nodes())
+        if not node_ids:
+            return ig.Graph(n=0, directed=graph.is_directed())
+
+        index = {node_id: idx for idx, node_id in enumerate(node_ids)}
+        edges: list[tuple[int, int]] = []
+        seen: set[tuple[int, int]] = set()
+        for source, target in graph.edges():
+            edge = (index[source], index[target])
+            if edge in seen:
+                continue
+            seen.add(edge)
+            edges.append(edge)
+
+        ig_graph = ig.Graph(
+            n=len(node_ids),
+            edges=edges,
+            directed=getattr(graph, "is_directed", lambda: True)(),
+        )
+        ig_graph.vs["name"] = node_ids
+        return ig_graph

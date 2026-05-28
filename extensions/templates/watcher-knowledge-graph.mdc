@@ -1,0 +1,17 @@
+---
+description: Watcher knowledge graph and MCP context
+alwaysApply: true
+---
+
+This project has a Watcher knowledge graph at `.watcher/`.
+
+- For codebase, architecture, dependency, or symbol questions, when `.watcher/watcher.db` exists and MCP is healthy, **first use the Watcher MCP server** (`watcher` on `http://127.0.0.1:{{MCP_PORT}}/mcp`). Prefer these tools over raw grep or reading entire files:
+  - `search_nodes` — find symbols by name or path
+  - `get_neighbors` — imports, callers, and callees for a node
+  - `get_entry_points`, `get_dead_code`, `get_circular_deps`, `get_god_nodes`, `get_complexity`, `get_churn`
+  - `get_graph` — summary stats before deeper queries
+  - `get_timeline` / `get_changes` — architectural diffs between snapshots
+- If MCP tools return empty data, run **Watcher: Build Graph** (or ask the user to) before falling back to file search.
+- Read `.watcher/graph.json` or `.watcher/exports/*.md` only for broad architecture review when MCP does not surface enough context.
+- After modifying code files in this session, remind the user to run **Watcher: Build Graph** (watch mode rebuilds incrementally when the engine is running).
+- Verify MCP usage in **Watcher → MCP Activity** or **Watcher: Show Status** (MCP call count / last call time).
