@@ -37,6 +37,7 @@ dependencies = [
   "leidenalg",
   "python-igraph",
   "click",
+  "jinja2",
 ]
 
 [project.optional-dependencies]
