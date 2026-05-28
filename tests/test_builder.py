@@ -27,7 +27,7 @@ def sample_scan(tmp_path: Path) -> tuple[ScanResult, dict[str, ParseResult]]:
         encoding="utf-8",
     )
 
-    scanner = WorkspaceScanner(root, cache_db=root / ".watcher" / "cache.db")
+    scanner = WorkspaceScanner(root, cache_db=root / ".genome" / "cache.db")
     scan = scanner.scan(incremental=False)
     scanner.cache.close()
 
@@ -43,7 +43,7 @@ def sample_scan(tmp_path: Path) -> tuple[ScanResult, dict[str, ParseResult]]:
 def test_builder_creates_file_and_symbol_nodes(sample_scan: tuple[ScanResult, dict[str, ParseResult]]) -> None:
     scan, parses = sample_scan
     builder = GraphBuilder()
-    graph = builder.build(scan, parses)
+    graph, _, _ = builder.build(scan, parses)
 
     from codegenome.graph_api import Graph
     assert isinstance(graph, Graph) or hasattr(graph, 'has_node')
@@ -89,7 +89,7 @@ def test_builder_tracks_imports_inheritance_and_calls() -> None:
     parse.inheritance = [ParsedInheritance(class_name="Child", base="Base", line=1)]
     parse.calls = [ParsedCall(caller="Child.run", callee="helper", line=8)]
 
-    graph = builder.build(scan, {"model.py": parse})
+    graph, _, _ = builder.build(scan, {"model.py": parse})
     file_id = file_node_id("model.py")
     import_nodes = [
         node
@@ -113,7 +113,7 @@ def test_builder_incremental_update(sample_scan: tuple[ScanResult, dict[str, Par
         encoding="utf-8",
     )
 
-    scanner = WorkspaceScanner(root, cache_db=root / ".watcher" / "cache.db")
+    scanner = WorkspaceScanner(root, cache_db=root / ".genome" / "cache.db")
     updated_scan = scanner.scan(incremental=True)
     scanner.cache.close()
 
@@ -137,7 +137,7 @@ def test_builder_incremental_update(sample_scan: tuple[ScanResult, dict[str, Par
 def test_builder_empty_scan_does_not_crash() -> None:
     builder = GraphBuilder()
     scan = ScanResult(root="/empty")
-    graph = builder.build(scan, {})
+    graph, _, _ = builder.build(scan, {})
     assert graph.number_of_nodes() == 0
 
 

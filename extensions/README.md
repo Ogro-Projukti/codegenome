@@ -17,7 +17,7 @@ The Python package includes a config writer for AI clients:
 
 ```bash
 python -m codegenome.installer \
-  --db-path /absolute/path/to/project/.watcher/watcher.db \
+  --db-path /absolute/path/to/project/.genome/watcher.db \
   --client cursor \
   --transport http \
   --host 127.0.0.1 \

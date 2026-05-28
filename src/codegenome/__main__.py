@@ -69,7 +69,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--db-path",
         default=None,
-        help="Timeline SQLite database path (default: .watcher/watcher.db)",
+        help="Timeline SQLite database path (default: .genome/watcher.db)",
     )
     parser.add_argument(
         "--mcp",
@@ -132,7 +132,7 @@ def run_timeline_query(args: argparse.Namespace) -> int:
     from codegenome.graph_store import GraphStore, GraphStoreError
 
     workspace = Path(args.workspace).resolve()
-    db_path = Path(args.db_path).resolve() if args.db_path else workspace / ".watcher" / "watcher.db"
+    db_path = Path(args.db_path).resolve() if args.db_path else workspace / ".genome" / "watcher.db"
 
     store = GraphStore(db_path)
     try:

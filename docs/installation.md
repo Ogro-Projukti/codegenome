@@ -57,9 +57,9 @@ Artifacts:
 
 | Path | Purpose |
 |------|---------|
-| `.watcher/graph.json` | Latest graph |
-| `.watcher/watcher.db` | Timeline snapshots |
-| `.watcher/exports/` | HTML, Markdown, etc. |
+| `.genome/graph.json` | Latest graph |
+| `.genome/watcher.db` | Timeline snapshots |
+| `.genome/exports/` | HTML, Markdown, etc. |
 
 ## MCP setup
 
@@ -73,7 +73,7 @@ watcher --workspace . --build --mcp --watch
 
 ```bash
 python -m codegenome.installer \
-  --db-path "$(pwd)/.watcher/watcher.db" \
+  --db-path "$(pwd)/.genome/watcher.db" \
   --client cursor \
   --transport http
 ```
@@ -88,7 +88,7 @@ Standalone MCP server (custom port or stdio):
 
 ```bash
 python -m codegenome.mcp_server \
-  --db-path ./.watcher/watcher.db \
+  --db-path ./.genome/watcher.db \
   --transport stdio
 ```
 

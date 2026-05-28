@@ -19,7 +19,7 @@ def sample_graph(tmp_path: Path) -> Graph:
     root.mkdir()
     (root / "alpha.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
 
-    scanner = WorkspaceScanner(root, cache_db=root / ".watcher" / "cache.db")
+    scanner = WorkspaceScanner(root, cache_db=root / ".genome" / "cache.db")
     scan = scanner.scan(incremental=False)
     scanner.cache.close()
 
@@ -30,7 +30,7 @@ def sample_graph(tmp_path: Path) -> Graph:
         if parsed:
             parses[record.path] = parsed
 
-    return GraphBuilder().build(scan, parses)
+    return GraphBuilder().build(scan, parses)[0]
 
 
 def test_timeline_snapshot_roundtrip(tmp_path: Path, sample_graph: Graph) -> None:

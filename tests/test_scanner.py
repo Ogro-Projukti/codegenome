@@ -16,12 +16,12 @@ def workspace(tmp_path: Path) -> Path:
     (root / "main.py").write_text("print('hello')\n", encoding="utf-8")
     (root / "utils.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
     (root / "ignored.txt").write_text("skip me", encoding="utf-8")
-    (root / ".watcherignore").write_text("ignored.txt\n*.log\n", encoding="utf-8")
+    (root / ".genomeignore").write_text("ignored.txt\n*.log\n", encoding="utf-8")
     return root
 
 
 def test_scanner_finds_files_and_respects_watcherignore(workspace: Path) -> None:
-    scanner = WorkspaceScanner(workspace, cache_db=workspace / ".watcher" / "cache.db")
+    scanner = WorkspaceScanner(workspace, cache_db=workspace / ".genome" / "cache.db")
     result = scanner.scan(incremental=False)
 
     paths = {record.path for record in result.files}
@@ -36,7 +36,7 @@ def test_scanner_sha256_and_cache(workspace: Path) -> None:
     main_path = workspace / "main.py"
     expected = sha256_file(main_path)
 
-    scanner = WorkspaceScanner(workspace, cache_db=workspace / ".watcher" / "cache.db")
+    scanner = WorkspaceScanner(workspace, cache_db=workspace / ".genome" / "cache.db")
     first = scanner.scan(incremental=False)
     main_record = next(record for record in first.files if record.path == "main.py")
     assert main_record.sha256 == expected
@@ -49,7 +49,7 @@ def test_scanner_sha256_and_cache(workspace: Path) -> None:
 
 
 def test_scanner_incremental_detects_changes(workspace: Path) -> None:
-    cache_db = workspace / ".watcher" / "cache.db"
+    cache_db = workspace / ".genome" / "cache.db"
     scanner = WorkspaceScanner(workspace, cache_db=cache_db)
     scanner.scan(incremental=False)
 

@@ -21,7 +21,8 @@ def _build_graph(files: dict[str, ParseResult]) -> Graph:
         )
         for path in files
     ]
-    return GraphBuilder().build(scan, files)
+    graph, _, _ = GraphBuilder().build(scan, files)
+    return graph
 
 
 from codegenome.graph_api import create_graph

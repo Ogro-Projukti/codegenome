@@ -10,7 +10,7 @@ watcher --workspace . --build --mcp --watch
 
 # Terminal 2: install client config
 python -m codegenome.installer \
-  --db-path "$(pwd)/.watcher/watcher.db" \
+  --db-path "$(pwd)/.genome/watcher.db" \
   --client cursor \
   --transport http \
   --host 127.0.0.1 \
@@ -26,14 +26,14 @@ python -m codegenome.mcp_server --help
 
 # HTTP
 python -m codegenome.mcp_server \
-  --db-path ./.watcher/watcher.db \
+  --db-path ./.genome/watcher.db \
   --host 127.0.0.1 \
   --port 7331 \
   --transport http
 
 # Stdio (Claude Desktop, some CLI agents)
 python -m codegenome.mcp_server \
-  --db-path ./.watcher/watcher.db \
+  --db-path ./.genome/watcher.db \
   --transport stdio
 ```
 
@@ -45,7 +45,7 @@ python -m codegenome.installer --help
 
 | Flag | Description |
 |------|-------------|
-| `--db-path PATH` | Absolute path to `.watcher/watcher.db` |
+| `--db-path PATH` | Absolute path to `.genome/watcher.db` |
 | `--python PATH` | Python executable for stdio transport |
 | `--transport stdio\|http` | Config transport mode |
 | `--host HOST` | HTTP host in config |
@@ -119,5 +119,5 @@ watcher --workspace . --build
 |---------|----------|
 | Connection refused | Run `watcher --mcp` or `mcp_server`; ensure graph was built |
 | Port 7331 in use | Stop other instance or `mcp_server --port 7332` |
-| Empty tool results | Run `--build` first; check `.watcher/watcher.db` exists |
+| Empty tool results | Run `--build` first; check `.genome/watcher.db` exists |
 | Client not using MCP | Restart client after `installer`; verify config path |

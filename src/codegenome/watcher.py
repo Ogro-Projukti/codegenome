@@ -67,7 +67,7 @@ class _RebuildHandler(FileSystemEventHandler):
         rel_path = self._relative_path(event.src_path)
         if rel_path is None:
             return
-        if rel_path.startswith(".watcher"):
+        if rel_path.startswith(".genome"):
             return
 
         with self._lock:
@@ -153,19 +153,19 @@ class WatcherEngine:
     def __init__(self, config: WatcherConfig) -> None:
         self.config = config
         self.workspace = config.workspace.resolve()
-        self.watcher_dir = self.workspace / ".watcher"
-        self.db_path = (config.db_path or self.watcher_dir / "watcher.db").resolve()
-        self.export_dir = (config.export_dir or self.watcher_dir / "exports").resolve()
+        self.genome_dir = self.workspace / ".genome"
+        self.db_path = (config.db_path or self.genome_dir / "watcher.db").resolve()
+        self.export_dir = (config.export_dir or self.genome_dir / "exports").resolve()
         self.graph_json_path = (
-            config.graph_json_path or self.watcher_dir / "graph.json"
+            config.graph_json_path or self.genome_dir / "graph.json"
         ).resolve()
 
-        self.watcher_dir.mkdir(parents=True, exist_ok=True)
+        self.genome_dir.mkdir(parents=True, exist_ok=True)
         self.export_dir.mkdir(parents=True, exist_ok=True)
 
         self.scanner = WorkspaceScanner(
             self.workspace,
-            cache_db=self.watcher_dir / "scan_cache.db",
+            cache_db=self.genome_dir / "scan_cache.db",
         )
         self.parser = SourceParser()
         self.builder = GraphBuilder()

@@ -20,9 +20,9 @@ DEFAULT_IGNORE_PATTERNS = [
     "__pycache__",
     "__pycache__/**",
     "*.pyc",
-    ".watcher",
-    ".watcher/**",
-    ".watcherignore",
+    ".genome",
+    ".genome/**",
+    ".genomeignore",
 ]
 
 
@@ -50,7 +50,7 @@ class ScanResult:
 
 
 class IgnoreMatcher:
-    """Match paths against .watcherignore-style glob patterns."""
+    """Match paths against .genomeignore-style glob patterns."""
 
     def __init__(self, patterns: list[str] | None = None) -> None:
         self._patterns = list(DEFAULT_IGNORE_PATTERNS)
@@ -58,7 +58,7 @@ class IgnoreMatcher:
             self._patterns.extend(patterns)
 
     @classmethod
-    def from_file(cls, root: Path, filename: str = ".watcherignore") -> IgnoreMatcher:
+    def from_file(cls, root: Path, filename: str = ".genomeignore") -> IgnoreMatcher:
         ignore_path = root / filename
         patterns: list[str] = []
         if ignore_path.is_file():
@@ -71,9 +71,9 @@ class IgnoreMatcher:
 
     @classmethod
     def for_workspace(cls, root: Path) -> IgnoreMatcher:
-        """Load default, .gitignore, and .watcherignore patterns for a workspace."""
+        """Load default, .gitignore, and .genomeignore patterns for a workspace."""
         patterns: list[str] = []
-        for filename in (".gitignore", ".watcherignore"):
+        for filename in (".gitignore", ".genomeignore"):
             ignore_path = root / filename
             if not ignore_path.is_file():
                 continue
@@ -180,12 +180,12 @@ class WorkspaceScanner:
         self,
         root: Path | str,
         cache_db: Path | str | None = None,
-        ignore_file: str = ".watcherignore",
+        ignore_file: str = ".genomeignore",
     ) -> None:
         self.root = Path(root).resolve()
         self.ignore = IgnoreMatcher.from_file(self.root, ignore_file)
         if cache_db is None:
-            cache_db = self.root / ".watcher" / "scan_cache.db"
+            cache_db = self.root / ".genome" / "scan_cache.db"
         self.cache_path = Path(cache_db).resolve()
         self.cache = ScanCache(self.cache_path)
         self._register_cache_ignore()

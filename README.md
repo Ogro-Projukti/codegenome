@@ -6,7 +6,7 @@ Use it headless in CI, on servers, or alongside any editor — no VS Code requir
 
 ## Features
 
-- **Graph builds** — incremental or full rebuilds with `.watcher/graph.json` output
+- **Graph builds** — incremental or full rebuilds with `.genome/graph.json` output
 - **Watch & live modes** — keep the graph fresh as files change
 - **Exports** — JSON, HTML, Markdown, GraphML, Cypher, Obsidian
 - **Timeline & churn** — snapshot diffs and change rankings from SQLite
@@ -37,7 +37,7 @@ cd /path/to/your/project
 codegenome --workspace . --build
 ```
 
-Output is written to `.watcher/` in the project you analyze (not in the codegenome install directory).
+Output is written to `.genome/` in the project you analyze (not in the codegenome install directory).
 
 ### Verify
 
@@ -62,7 +62,7 @@ codegenome --workspace . --build --export json markdown graphml
 codegenome --workspace . --dump-timeline
 
 # Install MCP config for Cursor
-python -m codegenome.installer --db-path "$(pwd)/.watcher/watcher.db" --client cursor
+python -m codegenome.installer --db-path "$(pwd)/.genome/watcher.db" --client cursor
 ```
 
 See [docs/cli-reference.md](docs/cli-reference.md) for the full command reference.

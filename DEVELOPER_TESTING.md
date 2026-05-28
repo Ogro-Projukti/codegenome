@@ -155,7 +155,7 @@ codegenome --workspace . --build --full
 ```
 
 Expected output:
-- `.watcher/` directory created with:
+- `.genome/` directory created with:
   - `graph.json` — the extracted code graph
   - `watcher.db` — SQLite database with metadata
   - `build_log.txt` — build summary
@@ -163,14 +163,14 @@ Expected output:
 #### Step 3: Verify Output
 
 ```bash
-# Check .watcher directory was created
-ls -la .watcher/
+# Check .genome directory was created
+ls -la .genome/
 
 # View build log
-cat .watcher/build_log.txt
+cat .genome/build_log.txt
 
 # Check graph file size (should be > 100 bytes for non-empty repos)
-ls -lh .watcher/graph.json
+ls -lh .genome/graph.json
 ```
 
 #### Step 4: Inspect Graph Content (Optional)
@@ -178,7 +178,7 @@ ls -lh .watcher/graph.json
 ```bash
 python
 >>> import json
->>> with open('.watcher/graph.json') as f:
+>>> with open('.genome/graph.json') as f:
 ...     graph = json.load(f)
 >>> print(f"Nodes: {len(graph.get('nodes', []))}")
 >>> print(f"Edges: {len(graph.get('edges', []))}")
@@ -202,7 +202,7 @@ codegenome --workspace . --build --export json markdown graphml cypher
 
 ```bash
 # Check all export files exist
-ls -la .watcher/
+ls -la .genome/
 
 # Should see:
 # - graph.json
@@ -215,7 +215,7 @@ ls -la .watcher/
 #### Step 3: View Markdown Export
 
 ```bash
-cat .watcher/graph.md | head -50
+cat .genome/graph.md | head -50
 ```
 
 #### Step 4: Test HTML Viewer
@@ -223,13 +223,13 @@ cat .watcher/graph.md | head -50
 ```bash
 # Open in browser (path depends on OS)
 # Windows:
-start .watcher/graph_html/index.html
+start .genome/graph_html/index.html
 
 # macOS:
-open .watcher/graph_html/index.html
+open .genome/graph_html/index.html
 
 # Linux:
-xdg-open .watcher/graph_html/index.html
+xdg-open .genome/graph_html/index.html
 ```
 
 ---
@@ -304,7 +304,7 @@ Expected output: JSON with timeline metadata, change events, and file churn stat
 ```bash
 python
 >>> from codegenome.timeline import TimelineDB
->>> db = TimelineDB('.watcher/watcher.db')
+>>> db = TimelineDB('.genome/watcher.db')
 >>> timeline = db.get_timeline()
 >>> print(f"Timeline snapshots: {len(timeline.get('snapshots', []))}")
 >>> exit()
@@ -454,7 +454,7 @@ print(result)
 
 ```bash
 # With sqlite3 CLI (if installed)
-sqlite3 .watcher/watcher.db
+sqlite3 .genome/watcher.db
 
 # View tables
 .tables
@@ -474,7 +474,7 @@ Or in Python:
 ```python
 import sqlite3
 
-conn = sqlite3.connect('.watcher/watcher.db')
+conn = sqlite3.connect('.genome/watcher.db')
 cursor = conn.cursor()
 
 # Get all tables
@@ -524,9 +524,9 @@ pip install --upgrade --force-reinstall tree-sitter tree-sitter-python tree-sitt
 
 ---
 
-### Issue 3: ".watcher Directory Not Created"
+### Issue 3: ".genome Directory Not Created"
 
-**Symptom:** Build completes but no `.watcher/` directory
+**Symptom:** Build completes but no `.genome/` directory
 
 **Causes:**
 - **Empty repository:** Ensure the target repo has source files in supported languages

@@ -1,4 +1,4 @@
-# Watcher knowledge graph (MCP)
+# Watcher knowledge graph (MCP) instructions for Claude
 
 This project has a Watcher knowledge graph at `.genome/`.
 

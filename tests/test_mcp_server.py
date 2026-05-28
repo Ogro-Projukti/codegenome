@@ -219,3 +219,42 @@ def test_tool_call_records_activity(sample_db: Path) -> None:
     assert stats["total_calls"] == 1
     assert stats["last_tool"] == "search_nodes"
     service.shutdown()
+
+
+def test_mcp_data_availability_for_ai(sample_db: Path) -> None:
+    config = ServerConfig(
+        host="127.0.0.1",
+        port=7331,
+        db_path=sample_db,
+        timeout_seconds=5.0,
+        log_level="INFO",
+        transport="http",
+    )
+    service = GraphService(config)
+    service.startup()
+    try:
+        server = create_server(service)
+        tools = asyncio.run(server.list_tools())
+        
+        # Test get_neighbors
+        get_neighbors = next(item for item in tools if item.name == "get_neighbors")
+        result = get_neighbors.fn(node_id="file:alpha.py", direction="out")
+        assert result["status"] == "ok"
+        data = result["data"]
+        assert "outgoing" in data
+        assert len(data["outgoing"]) > 0
+        assert len(data["outgoing"]) > 0
+
+        # Test get_node
+        get_node = next(item for item in tools if item.name == "get_node")
+        result = get_node.fn(node_id="file:alpha.py")
+        assert result["status"] == "ok"
+        assert result["data"]["file_path"] == "alpha.py"
+
+        # Test get_graph (returns summary)
+        get_graph = next(item for item in tools if item.name == "get_graph")
+        result = get_graph.fn()
+        assert result["status"] == "ok"
+        assert "node_count" in result["data"]
+    finally:
+        service.shutdown()

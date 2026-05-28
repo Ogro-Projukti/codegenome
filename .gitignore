@@ -13,7 +13,7 @@ build/
 *.spec
 
 # Watcher runtime artifacts
-.watcher/
+.genome/
 watcher.db
 
 # OS / IDE

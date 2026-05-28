@@ -25,14 +25,14 @@ Almost every command needs a project root (default: `.`):
 watcher --workspace /path/to/my-app --build
 ```
 
-The engine writes under `<workspace>/.watcher/`:
+The engine writes under `<workspace>/.genome/`:
 
 | Path | Purpose |
 |------|---------|
-| `.watcher/watcher.db` | Timeline snapshots (SQLite) |
-| `.watcher/graph.json` | Latest graph |
-| `.watcher/exports/` | HTML, Markdown, GraphML, etc. |
-| `.watcher/scan_cache.db` | Incremental scan cache |
+| `.genome/watcher.db` | Timeline snapshots (SQLite) |
+| `.genome/graph.json` | Latest graph |
+| `.genome/exports/` | HTML, Markdown, GraphML, etc. |
+| `.genome/scan_cache.db` | Incremental scan cache |
 
 Override the database with `--db-path` for timeline queries or MCP.
 
@@ -156,7 +156,7 @@ watcher --workspace . --build --mcp --watch
 Terminal 2:
 
 ```bash
-python -m codegenome.installer --db-path "$(pwd)/.watcher/watcher.db" --client cursor
+python -m codegenome.installer --db-path "$(pwd)/.genome/watcher.db" --client cursor
 ```
 
 See [MCP integration](mcp-integration.md) and [Installation](installation.md).

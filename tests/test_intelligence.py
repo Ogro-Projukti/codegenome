@@ -29,7 +29,7 @@ def _build_graph(
         for path in files
     ]
     builder = GraphBuilder()
-    graph = builder.build(scan, files)
+    graph, _, _ = builder.build(scan, files)
     if churn:
         for path, value in churn.items():
             node_id = file_node_id(path)
