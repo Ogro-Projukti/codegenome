@@ -6,8 +6,8 @@
   <h1>Codegenome</h1>
 
   <p>
-    **Turn your codebase into a living knowledge graph. An MCP server using tree-sitter to stream high-fidelity architectural context to Cursor & Claude.**<br>
-    🌍 **Website:** <a href="https://codegenome.pages.dev/">codegenome.pages.dev</a>
+    <strong>Turn your codebase into a living knowledge graph.</strong> An MCP server using tree-sitter to stream high-fidelity architectural context to Cursor and Claude.<br>
+    🌍 <strong>Website:</strong> <a href="https://codegenome.pages.dev/">codegenome.pages.dev</a>
   </p>
 
   <p>
@@ -20,12 +20,12 @@
 
 ## 🌐 The Connectome of Code: Mapping the Digital Brain
 
-Your codebase isn't a static document it's an evolving digital brain. Standard context tools dump flat, truncated text files into your LLM window, causing massive token bloat and architectural hallucinations. 
+Your codebase isn't a static document—it's an evolving digital brain. Standard context tools dump flat, truncated text files into your LLM window, causing massive token bloat and architectural hallucinations. 
 
 **Codegenome treats code like a living connectome.** By running localized, incremental `tree-sitter` passes and tracking changes in SQLite, it monitors your repository's structural neuroplasticity in real time—without dragging down system performance.
 
 ### ⚡ Watch your connectome grow as your agent codes
-As your AI agent (**Cursor, Claude Desktop, or custom MCP clients**) generates new modules, refactors functions, or shifts dependencies, Codegenome maps out those structural relationships instantly. It exposes high-fidelity intelligence directly to your editor via the **Model Context Protocol (MCP)**, allowing AI agents to reason about your entire system architecture with surgical precision. Use it headless in CI, on servers, or locally no complex IDE wrappers required!
+As your AI agent (**Cursor, Claude Desktop, or custom MCP clients**) generates new modules, refactors functions, or shifts dependencies, Codegenome maps out those structural relationships instantly. It exposes high-fidelity intelligence directly to your editor via the **Model Context Protocol (MCP)**, allowing AI agents to reason about your entire system architecture with surgical precision. Use it headless in CI, on servers, or locally—no complex IDE wrappers required.
 
 
 ## ✨ What Codegenome Can Do
@@ -64,6 +64,8 @@ Need your graph in a different format? Codegenome seamlessly exports to:
 - **Cypher** (for Neo4j)
 - **Obsidian** (for personal knowledge bases)
 
+Use `codegenome export --format <name>` for `json`, `html`, `cypher`, and `obsidian`. Additional formats are available through the [legacy CLI](docs/cli-reference.md#legacy-cli-python--m-codegenome).
+
 ## 🚀 Quick Start
 
 Get up and running in seconds.
@@ -99,10 +101,11 @@ codegenome evolve --live .
 
 | Doc | Description |
 |-----|-------------|
-| 📖 [CLI reference](https://github.com/Ogro-Projukti/codegenome/blob/main/docs/cli-reference.md) | Flags, workflows, troubleshooting |
-| ⚙️ [Installation](https://github.com/Ogro-Projukti/codegenome/blob/main/docs/installation.md) | pip, venv, MCP setup |
-| 🔌 [MCP integration](https://github.com/Ogro-Projukti/codegenome/blob/main/docs/mcp-integration.md) | Server modes and client installer |
-| 🧩 [Extensions](https://github.com/Ogro-Projukti/codegenome/blob/main/extensions/README.md) | Cursor rules and Copilot templates |
+| 📖 [CLI reference](docs/cli-reference.md) | Subcommands, legacy flags, workflows |
+| ⚙️ [Installation](docs/installation.md) | pip, venv, MCP setup |
+| 🔌 [MCP integration](docs/mcp-integration.md) | Server modes and client installer |
+| 🧩 [Extensions](extensions/README.md) | Cursor rules and Copilot templates |
+| 🤝 [Contributing](CONTRIBUTING.md) | Development setup, tests, pull requests |
 
 ## ⚖️ License
 

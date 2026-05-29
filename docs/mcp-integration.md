@@ -1,12 +1,20 @@
 # MCP integration
 
-Watcher exposes your project's knowledge graph to AI coding assistants through a **local MCP server** on `127.0.0.1:7331` (HTTP by default).
+Codegenome exposes your project's knowledge graph to AI coding assistants through a **local MCP server**. The default HTTP endpoint is `127.0.0.1:7331`.
 
-## Quick setup
+Build the graph before connecting clients:
+
+```bash
+codegenome analyze .
+```
+
+## Quick setup (HTTP + watch)
+
+Best for Cursor, Copilot (VS Code), and other HTTP-based clients.
 
 ```bash
 # Terminal 1: build + MCP + watch
-watcher --workspace . --build --mcp --watch
+python -m codegenome --workspace . --build --mcp --watch
 
 # Terminal 2: install client config
 python -m codegenome.installer \
@@ -15,9 +23,31 @@ python -m codegenome.installer \
   --transport http \
   --host 127.0.0.1 \
   --port 7331
+
+# Optional: generate agent rules in the workspace
+codegenome rules --client cursor --port 7331 .
 ```
 
 Restart your AI client after installation.
+
+## Stdio setup
+
+Best for Claude Desktop and agents that spawn an MCP subprocess.
+
+```bash
+codegenome analyze .
+codegenome mcp-start .
+```
+
+Or configure clients to run the module directly:
+
+```bash
+python -m codegenome.mcp_server \
+  --db-path ./.genome/watcher.db \
+  --transport stdio
+```
+
+Use `python -m codegenome.installer --transport stdio` when writing client config for stdio mode.
 
 ## Standalone MCP server
 
@@ -31,7 +61,7 @@ python -m codegenome.mcp_server \
   --port 7331 \
   --transport http
 
-# Stdio (Claude Desktop, some CLI agents)
+# Stdio
 python -m codegenome.mcp_server \
   --db-path ./.genome/watcher.db \
   --transport stdio
@@ -65,7 +95,7 @@ python -m codegenome.installer --help
 | Aider | `~/.aider/mcp.json` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
 
-Use **absolute paths** for `--db-path`.
+Always use **absolute paths** for `--db-path`.
 
 ## Environment variables
 
@@ -85,9 +115,15 @@ curl http://127.0.0.1:7331/health
 curl http://127.0.0.1:7331/mcp/activity
 ```
 
-## AI rules (Cursor / Copilot)
+## AI rules (Cursor / Copilot / AGENTS.md)
 
-Templates live in [`extensions/templates/`](../extensions/templates/). See [Extensions README](../extensions/README.md).
+Generate rules with the CLI:
+
+```bash
+codegenome rules --client all --port 7331 .
+```
+
+Templates also live in [`extensions/templates/`](../extensions/templates/). See [Extensions README](../extensions/README.md).
 
 Manual Cursor rule install:
 
@@ -96,6 +132,8 @@ mkdir -p .cursor/rules
 sed 's/{{MCP_PORT}}/7331/g' extensions/templates/watcher-knowledge-graph.mdc \
   > .cursor/rules/watcher-knowledge-graph.mdc
 ```
+
+On Windows PowerShell, copy the template and replace `{{MCP_PORT}}` with `7331` manually or use your editor's find-and-replace.
 
 ## MCP tools (summary)
 
@@ -110,14 +148,17 @@ Agents can call tools such as:
 Build the graph before expecting rich tool results:
 
 ```bash
-watcher --workspace . --build
+codegenome analyze .
 ```
 
 ## Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
-| Connection refused | Run `watcher --mcp` or `mcp_server`; ensure graph was built |
-| Port 7331 in use | Stop other instance or `mcp_server --port 7332` |
-| Empty tool results | Run `--build` first; check `.genome/watcher.db` exists |
-| Client not using MCP | Restart client after `installer`; verify config path |
+| Connection refused | Run HTTP MCP (`python -m codegenome --mcp --build --watch`) or `mcp_server`; ensure the graph was built |
+| Port 7331 in use | Stop the other instance or run `mcp_server --port 7332` and update client config |
+| Empty tool results | Run `codegenome analyze .` first; confirm `.genome/watcher.db` exists |
+| Client not using MCP | Restart the client after `installer`; verify the config file path |
+| Stdio vs HTTP mismatch | Match `--transport` in `installer` with how the server is started |
+
+See also [CLI reference](cli-reference.md) and [Installation](installation.md).

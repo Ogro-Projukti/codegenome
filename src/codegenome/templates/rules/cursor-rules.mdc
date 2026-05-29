@@ -9,7 +9,7 @@ You are operating within a repository analyzed by CodeGenome, an architectural k
 
 ## Core Directives
 
-1. **Mandatory MCP Usage**: When `.genome/watcher.db` exists and the MCP server is healthy, you MUST use the CodeGenome MCP server (`watcher` on `http://127.0.0.1:{{MCP_PORT}}/mcp`) for all codebase, architecture, dependency, or symbol queries.
+1. **Mandatory MCP Usage**: When `.genome/watcher.db` exists and the MCP server is healthy, you MUST use the Codegenome MCP server at `http://127.0.0.1:{{MCP_PORT}}/mcp` for all codebase, architecture, dependency, or symbol queries.
 2. **Prefer Graph over Grep**: Use the graph tools instead of raw file searching (`grep`) or reading entire files blindly. The graph provides semantic understanding.
 3. **Fallback Gracefully**: If MCP tools return empty data, instruct the user to run `codegenome analyze` before resorting to standard text searches.
 4. **Keep Context Fresh**: After modifying code files, remind the user to run `codegenome analyze` or start the live evolution server `codegenome evolve --live` to keep the graph updated.
