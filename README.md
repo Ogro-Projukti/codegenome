@@ -6,8 +6,8 @@
   <h1>Codegenome</h1>
 
   <p>
-    <strong>Open-source CLI for building, exporting, and querying local codebase knowledge graphs.</strong><br>
-    🌍 <strong>Website:</strong> <a href="https://codegenome.pages.dev/">codegenome.pages.dev</a>
+    **Turn your codebase into a living knowledge graph. An MCP server using tree-sitter to stream high-fidelity architectural context to Cursor & Claude.**<br>
+    🌍 **Website:** <a href="https://codegenome.pages.dev/">codegenome.pages.dev</a>
   </p>
 
   <p>
@@ -19,7 +19,16 @@
 
 ---
 
-**Codegenome** scans your repository, extracts symbols and relationships using `tree-sitter`, stores timeline snapshots in SQLite, and exposes this powerful intelligence to AI agents through MCP (Model Context Protocol). Use it headless in CI, on servers, or alongside any editor—no VS Code required!
+## 🌐 The Connectome of Code: Mapping the Digital Brain
+
+Your codebase isn't a static document—it's an evolving digital brain. Standard context tools dump flat, truncated text files into your LLM window, causing massive token bloat and architectural hallucinations. 
+
+**Codegenome treats code like a living connectome.** By running localized, incremental `tree-sitter` passes and tracking changes in SQLite, it monitors your repository's structural neuroplasticity in real time—without dragging down system performance.
+
+### ⚡ Watch your connectome grow as your agent codes
+As your AI agent (**Cursor, Claude Desktop, or custom MCP clients**) generates new modules, refactors functions, or shifts dependencies, Codegenome maps out those structural relationships instantly. It exposes high-fidelity intelligence directly to your editor via the **Model Context Protocol (MCP)**, allowing AI agents to reason about your entire system architecture with surgical precision. Use it headless in CI, on servers, or locally—no complex IDE wrappers required!
+
+---
 
 ## ✨ What Codegenome Can Do
 
