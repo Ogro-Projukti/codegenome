@@ -11,7 +11,6 @@
 
   <p>
     <a href="https://codegenome.pages.dev/"><img src="https://img.shields.io/badge/docs-website-blue?style=flat-square" alt="Documentation"></a>
-    <a href="https://github.com/Ogro-Projukti/codegenome/actions"><img src="https://img.shields.io/github/actions/workflow/status/Ogro-Projukti/codegenome/main.yml?style=flat-square" alt="Build Status"></a>
     <a href="https://pypi.org/project/codegenome/"><img src="https://img.shields.io/badge/pypi-codegenome-blue?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
     <a href="https://github.com/Ogro-Projukti/codegenome/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"></a>
   </p>
