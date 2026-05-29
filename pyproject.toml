@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codegenome"
-version = "0.1.1"
+version = "0.1.3"
 description = "Open-source CLI for building and querying local codebase knowledge graphs"
 readme = "README.md"
 license = "MIT"
@@ -38,11 +38,11 @@ dependencies = [
   "jinja2",
   "websockets",
   "textual",
+  "networkx>=3.2,<4",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "ruff", "pyinstaller>=6.0,<7"]
-compat = ["networkx"]
 
 [project.urls]
 Homepage = "https://github.com/watcher-dev/codegenome"

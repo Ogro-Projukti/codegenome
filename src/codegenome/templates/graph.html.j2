@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script type="text/javascript" src="{{ script_src }}"></script>
     <link rel="stylesheet" href="graph-viewer.css">
     <style>
@@ -411,15 +412,21 @@
             background: var(--bg-glass);
             border: 1px solid var(--border-glass);
             color: var(--text-primary);
-            padding: 8px 16px;
-            border-radius: 8px;
+            padding: 5px 12px;
+            border-radius: 6px;
             cursor: pointer;
             font-family: 'Outfit', sans-serif;
-            font-size: 12px;
+            font-size: 11px;
             transition: all 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
+            gap: 5px;
+        }
+
+        .control-btn .lucide {
+            width: 12px;
+            height: 12px;
         }
         
         .control-btn:hover {
@@ -581,11 +588,12 @@
 
     <div class="graph-container">
         <div class="top-filters">
-            <button class="control-btn filter-btn active" onclick="applyFilter('none', this)">No Filters (Default)</button>
-            <button class="control-btn filter-btn" onclick="applyFilter('god-classes', this)">God Classes</button>
-            <button class="control-btn filter-btn" onclick="applyFilter('fragile', this)">Fragile Nodes</button>
-            <button class="control-btn filter-btn" onclick="applyFilter('tech-debt', this)">Tech Debt</button>
-            <button class="control-btn filter-btn" onclick="applyFilter('bridge', this)">Bridge Nodes</button>
+            <button class="control-btn filter-btn active" onclick="applyFilter('none', this)"><i data-lucide="layout-grid"></i> Default</button>
+            <button class="control-btn filter-btn" onclick="applyFilter('god-classes', this)"><i data-lucide="crown"></i> God Node</button>
+            <button class="control-btn filter-btn" onclick="applyFilter('fragile', this)"><i data-lucide="zap"></i> Fragile</button>
+            <button class="control-btn filter-btn" onclick="applyFilter('tech-debt', this)"><i data-lucide="alert-triangle"></i> Tech Debt</button>
+            <button class="control-btn filter-btn" onclick="applyFilter('bridge', this)"><i data-lucide="git-merge"></i> Bridge</button>
+            <button class="control-btn filter-btn" onclick="applyFilter('root-nodes', this)"><i data-lucide="network"></i> Root</button>
         </div>
 
         <div id="network-view"></div>
@@ -699,6 +707,8 @@
                         highlight = (m.churn > 0 && m.churn >= maxMetrics.churn * 0.3 && m.comp >= maxMetrics.comp * 0.3);
                     } else if (currentFilter === 'bridge') {
                         highlight = m.bridge === true;
+                    } else if (currentFilter === 'root-nodes') {
+                        highlight = (m.in === 0);
                     }
                 }
 
@@ -930,7 +940,7 @@
             } else {
                 expCard.style.display = 'block';
                 if (filterType === 'god-classes') {
-                    expTitle.innerText = 'God Classes (High Fan-in)';
+                    expTitle.innerText = 'God Node (High Fan-in)';
                     expText.innerHTML = 'Highlighted in red are nodes with a massive amount of incoming dependencies (other modules rely on them). Changing these is highly risky as they are load-bearing pillars of your codebase.';
                 } else if (filterType === 'fragile') {
                     expTitle.innerText = 'Fragile Nodes (High Fan-out)';
@@ -941,6 +951,9 @@
                 } else if (filterType === 'bridge') {
                     expTitle.innerText = 'Bridge Nodes (Choke Points)';
                     expText.innerHTML = 'Highlighted in red are nodes that act as the sole bridge connecting otherwise separate architectural domains. They represent critical structural bottlenecks.';
+                } else if (filterType === 'root-nodes') {
+                    expTitle.innerText = 'Root Nodes (Zero Fan-in)';
+                    expText.innerHTML = 'Highlighted in red are nodes that have no incoming dependencies (nothing depends on them). These often act as entry points or top-level orchestrators.';
                 }
             }
 
@@ -1043,7 +1056,10 @@
         }
 
         // Initialize when window loads
-        window.addEventListener('load', initNetwork);
+        window.addEventListener('load', () => {
+            initNetwork();
+            lucide.createIcons();
+        });
     </script>
 </body>
 </html>
