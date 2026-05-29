@@ -6,14 +6,14 @@
   <h1>Codegenome</h1>
 
   <p>
-    <strong>Turn your codebase into a living knowledge graph.</strong> An MCP server using tree-sitter to stream high-fidelity architectural context to Cursor and Claude.<br>
-    🌍 <strong>Website:</strong> <a href="https://codegenome.pages.dev/">codegenome.pages.dev</a>
+    <strong>Turn your codebase into a living knowledge graph.</strong> An MCP server using tree-sitter to stream high-fidelity architectural context to Cursor and Claude.
   </p>
 
   <p>
+    <a href="https://codegenome.pages.dev/"><img src="https://img.shields.io/badge/docs-website-blue?style=flat-square" alt="Documentation"></a>
     <a href="https://github.com/Ogro-Projukti/codegenome/actions"><img src="https://img.shields.io/github/actions/workflow/status/Ogro-Projukti/codegenome/main.yml?style=flat-square" alt="Build Status"></a>
-    <a href="https://pypi.org/project/codegenome/"><img src="https://img.shields.io/pypi/v/codegenome?style=flat-square" alt="PyPI Version"></a>
-    <a href="https://github.com/Ogro-Projukti/codegenome/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Ogro-Projukti/codegenome?style=flat-square" alt="License"></a>
+    <a href="https://pypi.org/project/codegenome/"><img src="https://img.shields.io/badge/pypi-codegenome-blue?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
+    <a href="https://github.com/Ogro-Projukti/codegenome/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"></a>
   </p>
 </div>
 
