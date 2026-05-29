@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI agents &amp; MCP — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="ai-agents">
+<script>
+  window.DOC_META = {
+    page: 'ai-agents',
+    title: 'AI agents & MCP',
+    lead: 'Serve your knowledge graph to coding assistants through the Model Context Protocol — search symbols, trace neighbors, and surface architectural risks.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>AI agents &amp; MCP</h1>
+
+  <h2 id="mcp-role">Role of MCP</h2>
+  <p>Codegenome runs a local <strong>MCP server</strong> that exposes graph queries as tools. Agents call these tools instead of guessing structure from partial file reads.</p>
+
+  <h2 id="setup-flow">Setup flow</h2>
+  <ol class="doc-steps">
+    <li><strong>Build the graph</strong> — <code>codegenome analyze .</code></li>
+    <li><strong>Start MCP</strong> — <code>codegenome mcp-start</code> or HTTP via legacy CLI</li>
+    <li><strong>Install client config</strong> — <code>python -m codegenome.installer …</code></li>
+    <li><strong>Generate rules</strong> — <code>codegenome rules --client cursor .</code></li>
+    <li><strong>Restart your editor</strong></li>
+  </ol>
+
+  <h2 id="tools">Example tools</h2>
+  <ul>
+    <li><code>search_nodes</code> — find symbols by name or path</li>
+    <li><code>get_neighbors</code> — imports, callers, callees</li>
+    <li><code>get_entry_points</code>, <code>get_dead_code</code>, <code>get_circular_deps</code></li>
+    <li><code>get_god_nodes</code>, <code>get_complexity</code>, <code>get_churn</code></li>
+  </ul>
+  <p>Full list: <a href="../reference/mcp-tools.html">MCP tools reference</a>.</p>
+
+  <h2 id="rules">Agent rules</h2>
+  <p>Templates in the repository <code>extensions/templates/</code> teach agents when to call MCP tools. Install with:</p>
+  <div class="doc-code-block"><pre>codegenome rules --client cursor --port 7331 .
+codegenome rules --client all --dry-run .</pre></div>
+
+  <h2 id="guides">Guides</h2>
+  <ul>
+    <li><a href="../howto/cursor-setup.html">Cursor + MCP setup</a></li>
+    <li><a href="../reference/mcp.html">MCP server reference</a></li>
+  </ul>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

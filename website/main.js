@@ -98,9 +98,81 @@ document.addEventListener('DOMContentLoaded', () => {
     terminalObserver.observe(document.querySelector('.demo-section'));
   }
 
+  // Screenshot gallery lightbox
+  initGallery();
+
   // Bio-tech canvas background effect
   initCanvas();
 });
+
+function initGallery() {
+  const items = document.querySelectorAll('.gallery-item');
+  const lightbox = document.getElementById('gallery-lightbox');
+  if (!items.length || !lightbox) return;
+
+  const imgEl = lightbox.querySelector('.gallery-lightbox-img');
+  const captionEl = lightbox.querySelector('.gallery-lightbox-caption');
+  const slides = Array.from(items).map((btn) => {
+    const img = btn.querySelector('img');
+    const cap = btn.querySelector('.gallery-caption');
+    return {
+      src: img?.src || '',
+      alt: img?.alt || '',
+      caption: cap?.textContent || '',
+    };
+  });
+
+  let currentIndex = 0;
+
+  function show(index) {
+    currentIndex = (index + slides.length) % slides.length;
+    const slide = slides[currentIndex];
+    imgEl.src = slide.src;
+    imgEl.alt = slide.alt;
+    captionEl.textContent = slide.caption;
+  }
+
+  function open(index) {
+    show(index);
+    lightbox.hidden = false;
+    lightbox.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('gallery-open');
+    lightbox.querySelector('.gallery-lightbox-close')?.focus();
+  }
+
+  function close() {
+    lightbox.hidden = true;
+    lightbox.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('gallery-open');
+    imgEl.removeAttribute('src');
+  }
+
+  items.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.getAttribute('data-gallery-index'), 10);
+      open(Number.isNaN(idx) ? 0 : idx);
+    });
+  });
+
+  lightbox.querySelectorAll('[data-lightbox-close]').forEach((el) => {
+    el.addEventListener('click', close);
+  });
+
+  lightbox.querySelector('[data-lightbox-prev]')?.addEventListener('click', () => {
+    show(currentIndex - 1);
+  });
+
+  lightbox.querySelector('[data-lightbox-next]')?.addEventListener('click', () => {
+    show(currentIndex + 1);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (lightbox.hidden) return;
+    if (e.key === 'Escape') close();
+    if (e.key === 'ArrowLeft') show(currentIndex - 1);
+    if (e.key === 'ArrowRight') show(currentIndex + 1);
+  });
+}
 
 function initCanvas() {
   const canvas = document.getElementById('bioCanvas');

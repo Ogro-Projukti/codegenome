@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Knowledge graphs — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="knowledge-graph">
+<script>
+  window.DOC_META = {
+    page: 'knowledge-graph',
+    title: 'Knowledge graphs',
+    lead: 'Understand what Codegenome stores: file and symbol nodes, relationship edges, clustering, and intelligence reports.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Knowledge graphs</h1>
+
+  <h2 id="graph-model">Graph model</h2>
+  <p>The knowledge graph is a <strong>directed graph</strong> stored in SQLite and serialized to <code>.genome/graph.json</code>.</p>
+  <ul>
+    <li><strong>File nodes</strong> — one per source file (<code>file:path/to/module.py</code>)</li>
+    <li><strong>Symbol nodes</strong> — functions, classes, methods with qualified names</li>
+    <li><strong>Import edges</strong> — module dependencies</li>
+    <li><strong>Call edges</strong> — resolved invocations where possible</li>
+    <li><strong>Inheritance edges</strong> — class hierarchies</li>
+  </ul>
+
+  <h2 id="incremental">Incremental builds</h2>
+  <p>After the first full scan, Codegenome can update only changed files. The scan cache at <code>.genome/scan_cache.db</code> avoids re-parsing unchanged content.</p>
+  <p>Use <code>codegenome analyze .</code> for a standard incremental build, or the legacy CLI:</p>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --build
+python -m codegenome --workspace . --build --full</pre></div>
+
+  <h2 id="intelligence">Graph intelligence</h2>
+  <p>Built-in analysis includes:</p>
+  <ul>
+    <li>Dead code detection</li>
+    <li>Entry points</li>
+    <li>God nodes (high betweenness)</li>
+    <li>Circular dependencies</li>
+    <li>Complexity and churn rankings</li>
+    <li>Community detection (Leiden clustering on macro graphs)</li>
+  </ul>
+  <p>These power MCP tools like <code>get_dead_code</code> and <code>get_god_nodes</code>. See <a href="../reference/mcp-tools.html">MCP tools</a>.</p>
+
+  <h2 id="timeline">Timeline snapshots</h2>
+  <p>Each build can append a snapshot to <code>.genome/watcher.db</code>, enabling:</p>
+  <ul>
+    <li>Timeline dumps per node</li>
+    <li>Diffs between snapshot IDs</li>
+    <li>Churn rankings over time</li>
+  </ul>
+  <p>Query via legacy CLI flags: <code>--dump-timeline</code>, <code>--dump-changes</code>, <code>--dump-churn</code>.</p>
+
+  <h2 id="artifacts">Artifacts</h2>
+  <p>All paths are relative to your <strong>workspace root</strong> (the project you analyze). Details: <a href="../reference/artifacts.html">Workspace artifacts</a>.</p>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

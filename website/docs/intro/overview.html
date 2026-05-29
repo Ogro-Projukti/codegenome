@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overview — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="overview">
+<script>
+  window.DOC_META = {
+    page: 'overview',
+    title: 'Overview',
+    lead: 'Codegenome is an open-source CLI that turns your repository into a local knowledge graph using tree-sitter, SQLite timelines, and an MCP server for AI coding assistants.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Overview</h1>
+
+  <h2 id="what-is-codegenome">What is Codegenome?</h2>
+  <p>Codegenome scans source files in your workspace, extracts symbols (functions, classes, modules) and relationships (imports, calls, inheritance), and stores the result as a <strong>directed knowledge graph</strong>. That graph powers:</p>
+  <ul>
+    <li><strong>CLI workflows</strong> — analyze, export, watch, and query from the terminal</li>
+    <li><strong>Terminal UI (TUI)</strong> — explore architecture interactively</li>
+    <li><strong>MCP server</strong> — expose graph intelligence to Cursor, Copilot, Claude, and other agents</li>
+    <li><strong>Exports</strong> — JSON, HTML, Markdown, GraphML, Cypher, Obsidian vaults</li>
+  </ul>
+
+  <h2 id="how-it-works">How it works</h2>
+  <ol>
+    <li><strong>Scan</strong> — walk the workspace (respecting <code>.gitignore</code>)</li>
+    <li><strong>Parse</strong> — tree-sitter ASTs for Python, JavaScript, TypeScript, Go, Rust, and more</li>
+    <li><strong>Build</strong> — incrementally merge nodes and edges into a graph store</li>
+    <li><strong>Persist</strong> — snapshot timeline data in SQLite under <code>.genome/watcher.db</code></li>
+    <li><strong>Serve</strong> — MCP tools answer structural questions for agents</li>
+  </ol>
+
+  <h2 id="when-to-use">When to use it</h2>
+  <ul>
+    <li><strong>Onboarding</strong> — trace modules and entry points instead of reading every file</li>
+    <li><strong>Refactoring</strong> — find god nodes, circular dependencies, and dead code</li>
+    <li><strong>Agent guardrails</strong> — give LLMs accurate import/call context via MCP</li>
+    <li><strong>CI / headless</strong> — build and export graphs without an IDE</li>
+  </ul>
+
+  <h2 id="two-clis">Two ways to invoke the CLI</h2>
+  <p>The project provides a modern <strong>Click subcommand CLI</strong> (recommended):</p>
+  <div class="doc-code-block"><pre>codegenome analyze .
+codegenome export --format json --path .
+codegenome mcp-start</pre></div>
+  <p>It also ships a <strong>legacy flag-based CLI</strong> for power users and automation:</p>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --build --watch --mcp</pre></div>
+  <p>See <a href="../reference/legacy-cli.html">Legacy flag CLI</a> for the full flag list. Do not mix subcommands with legacy flags in one invocation.</p>
+
+  <h2 id="next">Next steps</h2>
+  <ul>
+    <li><a href="install.html">Installation</a></li>
+    <li><a href="quickstart.html">Quick start</a></li>
+    <li><a href="../topics/knowledge-graph.html">Knowledge graphs</a></li>
+  </ul>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

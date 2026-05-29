@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codegenome documentation</title>
+  <meta name="description" content="Official Codegenome documentation — install, CLI reference, MCP integration, and guides.">
+  <link rel="icon" type="image/png" href="../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../docs.css">
+</head>
+<body data-page="docs-index">
+<script>
+  window.DOC_META = {
+    page: 'docs-index',
+    title: 'Codegenome documentation',
+    lead: 'Everything you need to install Codegenome, build a knowledge graph of your repository, connect AI agents via MCP, and explore architecture from the terminal.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Codegenome documentation</h1>
+
+  <div class="doc-card-grid">
+    <a class="doc-card" href="intro/quickstart.html">
+      <h3>Quick start</h3>
+      <p>Install, analyze your repo, and open the TUI in five minutes.</p>
+    </a>
+    <a class="doc-card" href="intro/install.html">
+      <h3>Installation</h3>
+      <p>Python 3.11+, pip, editable dev install, and first graph build.</p>
+    </a>
+    <a class="doc-card" href="reference/commands.html">
+      <h3>CLI commands</h3>
+      <p><code>analyze</code>, <code>export</code>, <code>mcp-start</code>, <code>evolve</code>, <code>tui</code>, and more.</p>
+    </a>
+    <a class="doc-card" href="reference/mcp.html">
+      <h3>MCP server</h3>
+      <p>Connect Cursor, Copilot, Claude, and other agents to your graph.</p>
+    </a>
+  </div>
+
+  <h2 id="first-steps">First steps</h2>
+  <ol class="doc-steps">
+    <li>
+      <strong>Install the package</strong>
+      <div class="doc-code-block">
+        <button class="copy-btn" type="button" data-copy="pip install codegenome">Copy</button>
+        <pre>pip install codegenome</pre>
+      </div>
+    </li>
+    <li>
+      <strong>Build a graph in your project</strong>
+      <div class="doc-code-block">
+        <button class="copy-btn" type="button" data-copy="cd /path/to/your/project&#10;codegenome analyze .">Copy</button>
+        <pre>cd /path/to/your/project
+codegenome analyze .</pre>
+      </div>
+    </li>
+    <li>
+      <strong>Explore with the TUI or export</strong>
+      <div class="doc-code-block">
+        <pre>codegenome tui
+codegenome export --format html --path .</pre>
+      </div>
+    </li>
+  </ol>
+
+  <h2 id="sections">Documentation sections</h2>
+
+  <h3 id="intro">Getting started</h3>
+  <ul>
+    <li><a href="intro/overview.html">Overview</a> — what Codegenome is and how it fits your workflow</li>
+    <li><a href="intro/install.html">Installation</a> — requirements and setup</li>
+    <li><a href="intro/quickstart.html">Quick start</a> — end-to-end tutorial</li>
+  </ul>
+
+  <h3 id="topics">Topics</h3>
+  <ul>
+    <li><a href="topics/knowledge-graph.html">Knowledge graphs</a> — nodes, edges, and <code>.genome/</code> artifacts</li>
+    <li><a href="topics/watch-live.html">Watch &amp; live graph</a> — real-time updates and browser UI</li>
+    <li><a href="topics/exports.html">Export formats</a> — JSON, HTML, Obsidian, Cypher, and more</li>
+    <li><a href="topics/tui.html">Terminal UI</a> — interactive dashboard</li>
+    <li><a href="topics/ai-agents.html">AI agents &amp; MCP</a> — context for LLM tools</li>
+  </ul>
+
+  <h3 id="howto">How-to guides</h3>
+  <ul>
+    <li><a href="howto/cursor-setup.html">Cursor + MCP setup</a></li>
+    <li><a href="howto/ci-pipeline.html">CI graph builds</a></li>
+  </ul>
+
+  <h3 id="reference">Reference</h3>
+  <ul>
+    <li><a href="reference/cli.html">CLI overview</a></li>
+    <li><a href="reference/commands.html">Command reference</a></li>
+    <li><a href="reference/mcp.html">MCP server</a> · <a href="reference/mcp-tools.html">MCP tools</a></li>
+    <li><a href="reference/artifacts.html">Workspace artifacts</a></li>
+    <li><a href="reference/legacy-cli.html">Legacy flag CLI</a> (<code>python -m codegenome</code>)</li>
+    <li><a href="reference/troubleshooting.html">Troubleshooting</a></li>
+  </ul>
+
+  <div class="doc-tip">
+    <p class="doc-note-title">Tip</p>
+    <p>New to the project? Read <a href="intro/overview.html">Overview</a>, then follow <a href="intro/quickstart.html">Quick start</a>. For AI editors, jump to <a href="howto/cursor-setup.html">Cursor + MCP setup</a>.</p>
+  </div>
+</div>
+<script src="../docs-shell.js" data-site-root=".."></script>
+</body>
+</html>

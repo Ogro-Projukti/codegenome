@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Troubleshooting — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="troubleshooting">
+<script>
+  window.DOC_META = {
+    page: 'troubleshooting',
+    title: 'Troubleshooting',
+    lead: 'Common errors, fixes, and diagnostic commands for Codegenome CLI and MCP.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Troubleshooting</h1>
+
+  <h2 id="no-graph">No graph found</h2>
+  <p><strong>Symptom:</strong> <code>export</code> or <code>mcp-start</code> reports no graph or missing <code>.genome/watcher.db</code>.</p>
+  <p><strong>Fix:</strong> Run <code>codegenome analyze .</code> in the workspace first.</p>
+
+  <h2 id="unrecognized-args">unrecognized arguments</h2>
+  <p><strong>Symptom:</strong> CLI error when mixing flags and subcommands.</p>
+  <p><strong>Fix:</strong> Use only one style:</p>
+  <ul>
+    <li>Modern: <code>codegenome analyze .</code></li>
+    <li>Legacy: <code>python -m codegenome --workspace . --build</code></li>
+  </ul>
+  <p>See <a href="legacy-cli.html">Legacy flag CLI</a>.</p>
+
+  <h2 id="command-not-found">codegenome: command not found</h2>
+  <ul>
+    <li>Activate your virtual environment</li>
+    <li>Or run <code>python -m codegenome.cli analyze .</code></li>
+    <li>Verify install: <code>pip show codegenome</code></li>
+  </ul>
+
+  <h2 id="igraph">igraph / leidenalg build failure</h2>
+  <p>Install platform build tools (see <a href="../intro/install.html#igraph">Installation</a>), then retry <code>pip install codegenome</code>.</p>
+
+  <h2 id="mcp-connection">MCP connection refused</h2>
+  <ul>
+    <li>Ensure MCP process is running (<code>--mcp</code> or <code>mcp_server</code>)</li>
+    <li>Graph was built: <code>codegenome analyze .</code></li>
+    <li>Check health: <code>curl http://127.0.0.1:7331/health</code></li>
+  </ul>
+
+  <h2 id="port-in-use">Port 7331 in use</h2>
+  <p>Stop the other instance or use a custom port:</p>
+  <div class="doc-code-block"><pre>python -m codegenome.mcp_server --db-path ./.genome/watcher.db --port 7332</pre></div>
+  <p>Update installer and rules with the same port.</p>
+
+  <h2 id="empty-tools">Empty MCP tool results</h2>
+  <ul>
+    <li>Rebuild graph after large code changes</li>
+    <li>Confirm <code>--db-path</code> points to the correct workspace DB</li>
+    <li>Restart the AI client after running <code>installer</code></li>
+  </ul>
+
+  <h2 id="empty-timeline">Empty timeline dumps</h2>
+  <p>Run at least one successful <code>--build</code> before <code>--dump-timeline</code>.</p>
+
+  <h2 id="get-help">Getting more help</h2>
+  <ul>
+    <li><a href="https://github.com/Ogro-Projukti/codegenome/issues">GitHub Issues</a></li>
+    <li><a href="cli.html">CLI overview</a></li>
+    <li><a href="mcp.html">MCP server</a></li>
+  </ul>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

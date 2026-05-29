@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP server — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="mcp">
+<script>
+  window.DOC_META = {
+    page: 'mcp',
+    title: 'MCP server',
+    lead: 'Run the Model Context Protocol server over HTTP or stdio, install client configs, and verify health endpoints.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>MCP server</h1>
+
+  <h2 id="quick-setup">Quick setup</h2>
+  <div class="doc-code-block"><pre># Terminal 1
+python -m codegenome --workspace . --build --mcp --watch
+
+# Terminal 2
+python -m codegenome.installer \
+  --db-path "$(pwd)/.genome/watcher.db" \
+  --client cursor \
+  --transport http \
+  --host 127.0.0.1 \
+  --port 7331</pre></div>
+
+  <h2 id="standalone">Standalone server</h2>
+  <div class="doc-code-block"><pre>python -m codegenome.mcp_server --help
+
+# HTTP (default port 7331)
+python -m codegenome.mcp_server \
+  --db-path ./.genome/watcher.db \
+  --host 127.0.0.1 \
+  --port 7331 \
+  --transport http
+
+# Stdio
+python -m codegenome.mcp_server \
+  --db-path ./.genome/watcher.db \
+  --transport stdio</pre></div>
+
+  <h2 id="click-mcp">codegenome mcp-start</h2>
+  <div class="doc-code-block"><pre>codegenome analyze .
+codegenome mcp-start .</pre></div>
+  <p>Starts stdio transport using the workspace database path.</p>
+
+  <h2 id="installer">Config installer</h2>
+  <div class="doc-code-block"><pre>python -m codegenome.installer --help</pre></div>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--db-path</code></td><td>Absolute path to <code>.genome/watcher.db</code></td></tr>
+        <tr><td><code>--python</code></td><td>Python executable for stdio transport</td></tr>
+        <tr><td><code>--transport</code></td><td><code>stdio</code> or <code>http</code></td></tr>
+        <tr><td><code>--host</code>, <code>--port</code></td><td>HTTP settings in generated config</td></tr>
+        <tr><td><code>--client</code></td><td>Limit to one client (repeatable)</td></tr>
+        <tr><td><code>--dry-run</code></td><td>Print target paths only</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="clients">Supported clients</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Client key</th><th>Config location</th></tr></thead>
+      <tbody>
+        <tr><td><code>cursor</code></td><td><code>~/.cursor/mcp.json</code></td></tr>
+        <tr><td><code>copilot</code></td><td><code>.vscode/mcp.json</code> (workspace)</td></tr>
+        <tr><td><code>claude</code></td><td>Claude Desktop config (OS-specific)</td></tr>
+        <tr><td><code>codex</code></td><td><code>~/.codex/mcp.json</code></td></tr>
+        <tr><td><code>gemini</code></td><td><code>~/.gemini/mcp.json</code></td></tr>
+        <tr><td><code>aider</code></td><td><code>~/.aider/mcp.json</code></td></tr>
+        <tr><td><code>windsurf</code></td><td><code>~/.codeium/windsurf/mcp_config.json</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="env">Environment variables</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>WATCHER_MCP_DB_PATH</code></td><td><code>test.db</code></td><td>Database path</td></tr>
+        <tr><td><code>WATCHER_MCP_HOST</code></td><td><code>127.0.0.1</code></td><td>HTTP bind host</td></tr>
+        <tr><td><code>WATCHER_MCP_PORT</code></td><td><code>7331</code></td><td>HTTP port</td></tr>
+        <tr><td><code>WATCHER_MCP_TRANSPORT</code></td><td><code>http</code></td><td><code>http</code> or <code>stdio</code></td></tr>
+        <tr><td><code>WATCHER_MCP_TIMEOUT</code></td><td><code>30</code></td><td>Tool timeout (seconds)</td></tr>
+        <tr><td><code>WATCHER_MCP_LOG_LEVEL</code></td><td><code>INFO</code></td><td>Log level</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="health">Health &amp; activity</h2>
+  <div class="doc-code-block"><pre>curl http://127.0.0.1:7331/health
+curl http://127.0.0.1:7331/mcp/activity</pre></div>
+
+  <p>Tool reference: <a href="mcp-tools.html">MCP tools</a> · Guide: <a href="../howto/cursor-setup.html">Cursor setup</a></p>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

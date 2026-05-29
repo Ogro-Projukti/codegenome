@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Installation — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="install">
+<script>
+  window.DOC_META = {
+    page: 'install',
+    title: 'Installation',
+    lead: 'Install Codegenome with pip (Python 3.11+). Use a virtual environment and verify the CLI before analyzing your first project.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Installation</h1>
+
+  <h2 id="requirements">Requirements</h2>
+  <ul>
+    <li>Python <strong>3.11+</strong></li>
+    <li>A C compiler on some platforms (for <code>python-igraph</code> / <code>leidenalg</code>)</li>
+    <li>Git (optional, for cloning the repository)</li>
+  </ul>
+
+  <h2 id="pypi">Install from PyPI</h2>
+  <div class="doc-code-block">
+    <button class="copy-btn" type="button" data-copy="pip install codegenome">Copy</button>
+    <pre>pip install codegenome</pre>
+  </div>
+  <p>Verify:</p>
+  <div class="doc-code-block"><pre>codegenome --help
+python -c "import codegenome; print(codegenome.__version__)"</pre></div>
+
+  <h2 id="venv">Virtual environment (recommended)</h2>
+  <div class="doc-code-block"><pre>python -m venv .venv
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+pip install codegenome
+
+# macOS / Linux
+source .venv/bin/activate
+pip install codegenome</pre></div>
+
+  <h2 id="editable">Editable install (development)</h2>
+  <p>From the repository root:</p>
+  <div class="doc-code-block"><pre>python -m venv .venv
+.venv\Scripts\Activate.ps1   # Windows
+# source .venv/bin/activate  # macOS / Linux
+pip install -e ".[dev]"</pre></div>
+  <p>Run tests:</p>
+  <div class="doc-code-block"><pre>pytest</pre></div>
+
+  <h2 id="first-build">First graph build</h2>
+  <p>Point Codegenome at the project you want to analyze (not necessarily the Codegenome repo itself):</p>
+  <div class="doc-code-block">
+    <button class="copy-btn" type="button" data-copy="cd /path/to/your-app&#10;codegenome analyze .">Copy</button>
+    <pre>cd /path/to/your-app
+codegenome analyze .</pre>
+  </div>
+  <p>Artifacts appear under <code>.genome/</code>. See <a href="../reference/artifacts.html">Workspace artifacts</a>.</p>
+
+  <div class="doc-warning">
+    <p class="doc-note-title">Important</p>
+    <p>Commands like <code>codegenome export</code> and <code>codegenome mcp-start</code> require an existing graph. Always run <code>codegenome analyze .</code> first in that workspace.</p>
+  </div>
+
+  <h2 id="igraph">Build tools for igraph</h2>
+  <p>If <code>python-igraph</code> fails to install:</p>
+  <ul>
+    <li><strong>Windows</strong> — install MSVC Build Tools, then retry <code>pip install python-igraph</code></li>
+    <li><strong>macOS</strong> — <code>xcode-select --install</code></li>
+    <li><strong>Linux</strong> — install <code>build-essential</code> (or your distro equivalent)</li>
+  </ul>
+
+  <h2 id="next">Next</h2>
+  <p><a href="quickstart.html">Quick start</a> · <a href="../howto/cursor-setup.html">Cursor + MCP setup</a></p>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP tools — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="mcp-tools">
+<script>
+  window.DOC_META = {
+    page: 'mcp-tools',
+    title: 'MCP tools',
+    lead: 'Tools exposed to AI agents for searching the graph, tracing dependencies, and surfacing architectural intelligence.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>MCP tools</h1>
+
+  <p>Build the graph before calling tools: <code>codegenome analyze .</code></p>
+
+  <h2 id="search">Search &amp; navigation</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>search_nodes</code></td><td>Find symbols by name or file path</td></tr>
+        <tr><td><code>get_node</code></td><td>Fetch a single node by ID</td></tr>
+        <tr><td><code>get_neighbors</code></td><td>Imports, callers, callees around a node</td></tr>
+        <tr><td><code>get_graph</code></td><td>Serialized subgraph with limits</td></tr>
+        <tr><td><code>query_graph</code></td><td>Filtered graph queries</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="intelligence">Intelligence</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>get_entry_points</code></td><td>Modules/symbols with no inbound deps</td></tr>
+        <tr><td><code>get_dead_code</code></td><td>Unreachable or unreferenced symbols</td></tr>
+        <tr><td><code>get_circular_deps</code></td><td>Dependency cycles</td></tr>
+        <tr><td><code>get_god_nodes</code></td><td>Highly connected hub nodes</td></tr>
+        <tr><td><code>get_complexity</code></td><td>Complexity rankings (limit param)</td></tr>
+        <tr><td><code>get_churn</code></td><td>Churn rankings from timeline</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="timeline">Timeline</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>get_timeline</code></td><td>History for a node (optional <code>node_id</code>)</td></tr>
+        <tr><td><code>get_changes</code></td><td>Diff between two snapshot IDs</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="agent-tips">Tips for agent authors</h2>
+  <ul>
+    <li>Prefer <code>search_nodes</code> before reading entire files</li>
+    <li>Use <code>get_neighbors</code> to trace impact of edits</li>
+    <li>Call <code>get_circular_deps</code> before large refactors</li>
+    <li>Install rules via <code>codegenome rules</code> so agents know when to call tools</li>
+  </ul>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

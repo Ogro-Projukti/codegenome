@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI overview — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="cli">
+<script>
+  window.DOC_META = {
+    page: 'cli',
+    title: 'CLI overview',
+    lead: 'Invoke Codegenome via the codegenome command, python -m codegenome, or module-specific entry points for MCP and installers.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>CLI overview</h1>
+
+  <h2 id="invocation">How to invoke</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Method</th><th>When to use</th></tr></thead>
+      <tbody>
+        <tr><td><code>codegenome …</code></td><td>Primary user-facing CLI (Click)</td></tr>
+        <tr><td><code>python -m codegenome …</code></td><td>Legacy flag CLI, dev without PATH</td></tr>
+        <tr><td><code>python -m codegenome.mcp_server …</code></td><td>Standalone MCP (custom port/stdio)</td></tr>
+        <tr><td><code>python -m codegenome.installer …</code></td><td>Write MCP config for AI clients</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="help">Help</h2>
+  <div class="doc-code-block"><pre>codegenome --help
+python -m codegenome --help
+python -m codegenome.mcp_server --help
+python -m codegenome.installer --help</pre></div>
+
+  <h2 id="subcommands">Subcommands (Click CLI)</h2>
+  <ul>
+    <li><code>analyze</code> — build knowledge graph</li>
+    <li><code>export</code> — export graph to a format</li>
+    <li><code>mcp-start</code> — start MCP server (stdio)</li>
+    <li><code>evolve</code> — watch + live browser UI</li>
+    <li><code>rules</code> — generate agent rule files</li>
+    <li><code>tui</code> — terminal dashboard</li>
+  </ul>
+  <p>Details: <a href="commands.html">Command reference</a>.</p>
+
+  <h2 id="workspace">Workspace</h2>
+  <p>Most commands accept a path argument (default <code>.</code>). All artifacts are stored under <code>&lt;workspace&gt;/.genome/</code>.</p>
+
+  <h2 id="exit-codes">Exit codes</h2>
+  <ul>
+    <li><code>0</code> — success</li>
+    <li><code>1</code> — error (message on stderr)</li>
+  </ul>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

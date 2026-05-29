@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CI graph builds — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="ci-pipeline">
+<script>
+  window.DOC_META = {
+    page: 'ci-pipeline',
+    title: 'CI graph builds',
+    lead: 'Run headless graph builds in GitHub Actions or other CI systems and upload JSON or HTML artifacts.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>CI graph builds</h1>
+
+  <h2 id="goals">Goals in CI</h2>
+  <ul>
+    <li>Track architectural drift between commits</li>
+    <li>Publish graph JSON as a build artifact</li>
+    <li>Fail builds when metrics exceed thresholds (custom scripts)</li>
+  </ul>
+
+  <h2 id="minimal">Minimal GitHub Actions job</h2>
+  <div class="doc-code-block"><pre>jobs:
+  codegenome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install codegenome
+      - run: codegenome analyze .
+      - run: codegenome export --format json --path .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codegenome-graph
+          path: .genome/exports/</pre></div>
+
+  <h2 id="legacy">Legacy CLI in CI</h2>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --build --export json
+python -m codegenome --workspace . --print-metrics</pre></div>
+
+  <h2 id="cache">Caching</h2>
+  <p>Incremental builds use <code>.genome/scan_cache.db</code>. Cache that directory between runs to speed up PR builds:</p>
+  <div class="doc-code-block"><pre>- uses: actions/cache@v4
+  with:
+    path: .genome
+    key: codegenome-${{ runner.os }}-${{ hashFiles('**/*.py') }}</pre></div>
+
+  <div class="doc-note">
+    <p class="doc-note-title">Note</p>
+    <p>Do not commit <code>.genome/</code> to git unless your team explicitly wants graph artifacts in version control. Add <code>.genome/</code> to <code>.gitignore</code> for most projects.</p>
+  </div>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cursor + MCP setup — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="cursor-setup">
+<script>
+  window.DOC_META = {
+    page: 'cursor-setup',
+    title: 'Cursor + MCP setup',
+    lead: 'Step-by-step guide to building a graph, starting the MCP server, installing Cursor config, and generating agent rules.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Cursor + MCP setup</h1>
+
+  <h2 id="prerequisites">Prerequisites</h2>
+  <ul>
+    <li>Codegenome installed (<a href="../intro/install.html">Installation</a>)</li>
+    <li>Cursor IDE with MCP support</li>
+    <li>Your project opened as the workspace root</li>
+  </ul>
+
+  <h2 id="step-1">Step 1 — Build the graph</h2>
+  <div class="doc-code-block"><pre>cd /path/to/your/project
+codegenome analyze .</pre></div>
+  <p>Confirm <code>.genome/watcher.db</code> exists.</p>
+
+  <h2 id="step-2">Step 2 — Start MCP (HTTP)</h2>
+  <p><strong>Terminal 1</strong> — keep this running:</p>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --build --mcp --watch</pre></div>
+  <p>Or start a standalone HTTP server:</p>
+  <div class="doc-code-block"><pre>python -m codegenome.mcp_server \
+  --db-path ./.genome/watcher.db \
+  --transport http \
+  --host 127.0.0.1 \
+  --port 7331</pre></div>
+  <p>Health check:</p>
+  <div class="doc-code-block"><pre>curl http://127.0.0.1:7331/health</pre></div>
+
+  <h2 id="step-3">Step 3 — Install Cursor MCP config</h2>
+  <p><strong>Terminal 2</strong>:</p>
+  <div class="doc-code-block"><pre>python -m codegenome.installer \
+  --db-path "$(pwd)/.genome/watcher.db" \
+  --client cursor \
+  --transport http \
+  --host 127.0.0.1 \
+  --port 7331</pre></div>
+  <p>On Windows PowerShell, use <code>$PWD</code> instead of <code>$(pwd)</code>.</p>
+
+  <h2 id="step-4">Step 4 — Generate Cursor rules</h2>
+  <div class="doc-code-block"><pre>codegenome rules --client cursor --port 7331 .</pre></div>
+  <p>Or copy the template manually from <code>extensions/templates/watcher-knowledge-graph.mdc</code> into <code>.cursor/rules/</code>.</p>
+
+  <h2 id="step-5">Step 5 — Restart Cursor</h2>
+  <p>Reload the window so MCP picks up <code>~/.cursor/mcp.json</code> changes.</p>
+
+  <h2 id="stdio">Alternative: stdio transport</h2>
+  <div class="doc-code-block"><pre>codegenome mcp-start .
+python -m codegenome.installer \
+  --db-path "$(pwd)/.genome/watcher.db" \
+  --client cursor \
+  --transport stdio</pre></div>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <p>See <a href="../reference/troubleshooting.html">Troubleshooting</a> for connection refused, empty tools, and port conflicts.</p>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

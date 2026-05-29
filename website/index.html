@@ -36,19 +36,27 @@
   <main class="container">
     <header class="header">
       <div class="header-logo">
-        <a href="/" class="logo-link">
+        <a href="index.html" class="logo-link">
           <img src="logo.png" alt="Codegenome Logo" class="logo-img">
           <h2 class="logo-text">CODE<br>GENOME</h2>
         </a>
       </div>
       <div class="header-right">
         <nav class="header-nav" aria-label="Main Navigation">
-          <a href="https://github.com/Ogro-Projukti/codegenome" target="_blank" class="nav-link">
-            <span class="nav-text">Docs</span>
+          <a href="docs/index.html" class="nav-link">
+            <span class="nav-text">Documentation</span>
             <span class="dither-blink"></span>
           </a>
-          <a href="https://www.ogroprojukti.com" target="_blank" class="nav-link">
-            <span class="nav-text">Company</span>
+          <a href="#gallery" class="nav-link">
+            <span class="nav-text">Gallery</span>
+            <span class="dither-blink"></span>
+          </a>
+          <a href="docs/intro/quickstart.html" class="nav-link">
+            <span class="nav-text">Quick start</span>
+            <span class="dither-blink"></span>
+          </a>
+          <a href="https://github.com/Ogro-Projukti/codegenome" target="_blank" rel="noopener" class="nav-link">
+            <span class="nav-text">GitHub</span>
             <span class="dither-blink"></span>
           </a>
         </nav>
@@ -76,14 +84,57 @@
           </div>
           <div class="install-step">
             <div class="install-header">
-              <span class="step-label">2. Analyze & Explore</span>
+              <span class="step-label">2. Analyze &amp; Explore</span>
               <button class="copy-btn" data-copy="codegenome analyze . && codegenome tui" aria-label="Copy execution command">Copy</button>
             </div>
             <code class="install-code">codegenome analyze . && codegenome tui</code>
           </div>
         </div>
+        <p class="hero-docs-cta">
+          <a href="docs/index.html" class="docs-cta-link">Read the full documentation &rarr;</a>
+        </p>
       </div>
     </section>
+
+    <section class="gallery-section fade-in" id="gallery">
+      <div class="section-heading gallery-heading">
+        <span class="section-title">Screenshots</span>
+        <p class="gallery-desc">Explore the terminal UI, live graph browser, and interactive architecture views.</p>
+      </div>
+      <div class="gallery-grid" role="list">
+        <button type="button" class="gallery-item" role="listitem" data-gallery-index="0" aria-label="Open screenshot: Terminal UI">
+          <span class="gallery-frame">
+            <img src="assets/screenshots/tui.png" alt="Codegenome terminal UI dashboard" width="640" height="360" loading="lazy">
+          </span>
+          <span class="gallery-caption">Terminal UI (TUI)</span>
+        </button>
+        <button type="button" class="gallery-item" role="listitem" data-gallery-index="1" aria-label="Open screenshot: Live graph visualization">
+          <span class="gallery-frame">
+            <img src="assets/screenshots/live-graph-1.png" alt="Live graph visualization overview" width="640" height="360" loading="lazy">
+          </span>
+          <span class="gallery-caption">Live graph — overview</span>
+        </button>
+        <button type="button" class="gallery-item" role="listitem" data-gallery-index="2" aria-label="Open screenshot: Live graph detail view">
+          <span class="gallery-frame">
+            <img src="assets/screenshots/live-graph-2.png" alt="Live graph detail and node inspection" width="640" height="360" loading="lazy">
+          </span>
+          <span class="gallery-caption">Live graph — detail</span>
+        </button>
+      </div>
+    </section>
+
+    <div id="gallery-lightbox" class="gallery-lightbox" hidden aria-hidden="true">
+      <div class="gallery-lightbox-backdrop" data-lightbox-close></div>
+      <div class="gallery-lightbox-dialog" role="dialog" aria-modal="true" aria-labelledby="gallery-lightbox-caption">
+        <button type="button" class="gallery-lightbox-close" data-lightbox-close aria-label="Close gallery">&times;</button>
+        <button type="button" class="gallery-lightbox-nav gallery-lightbox-prev" data-lightbox-prev aria-label="Previous screenshot">&lsaquo;</button>
+        <figure class="gallery-lightbox-figure">
+          <img class="gallery-lightbox-img" src="" alt="">
+          <figcaption id="gallery-lightbox-caption" class="gallery-lightbox-caption"></figcaption>
+        </figure>
+        <button type="button" class="gallery-lightbox-nav gallery-lightbox-next" data-lightbox-next aria-label="Next screenshot">&rsaquo;</button>
+      </div>
+    </div>
 
     <section class="demo-section fade-in">
       <div class="demo-header">
@@ -145,7 +196,7 @@
     <footer class="footer fade-in">
       <div class="footer-col">
         <span class="footer-text">Codegenome</span>
-        <span class="footer-version">v1.0.0</span>
+        <span class="footer-version">v0.1.0</span>
       </div>
       <div class="footer-col align-right">
         <a href="https://www.ogroprojukti.com" target="_blank" class="footer-link">Ogro Projukti &nearr;</a>

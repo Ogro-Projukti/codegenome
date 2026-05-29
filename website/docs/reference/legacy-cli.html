@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legacy flag CLI — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="legacy-cli">
+<script>
+  window.DOC_META = {
+    page: 'legacy-cli',
+    title: 'Legacy flag CLI',
+    lead: 'Power-user interface via python -m codegenome with --workspace, --build, --watch, timeline dumps, and MCP flags.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Legacy flag CLI</h1>
+
+  <div class="doc-warning">
+    <p class="doc-note-title">Do not mix CLIs</p>
+    <p>Use either <code>codegenome &lt;subcommand&gt;</code> <strong>or</strong> <code>python -m codegenome --flags</code>. Mixing subcommands with legacy flags causes <code>unrecognized arguments</code> errors.</p>
+  </div>
+
+  <h2 id="invoke">Invocation</h2>
+  <div class="doc-code-block"><pre>python -m codegenome --help</pre></div>
+
+  <h2 id="build-export">Build &amp; export</h2>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --build
+python -m codegenome --workspace . --build --full
+python -m codegenome --workspace . --build --export json html markdown graphml cypher obsidian</pre></div>
+
+  <h2 id="watch">Watch &amp; live graph</h2>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --build --watch --watch-debounce 10
+python -m codegenome --workspace . --build --live-graph --live-graph-interval 60</pre></div>
+
+  <h2 id="mcp">MCP</h2>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --build --mcp --watch</pre></div>
+
+  <h2 id="timeline">Timeline queries</h2>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --dump-timeline
+python -m codegenome --workspace . --dump-timeline --node-id "file:src/main.py"
+python -m codegenome --workspace . --dump-changes --snapshot-from 1 --snapshot-to 3
+python -m codegenome --workspace . --dump-churn --churn-limit 10</pre></div>
+
+  <h2 id="flags">Flag reference</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--workspace PATH</code></td><td>Project root (default <code>.</code>)</td></tr>
+        <tr><td><code>--build</code></td><td>Run graph build</td></tr>
+        <tr><td><code>--full</code></td><td>Force full rebuild</td></tr>
+        <tr><td><code>--watch</code></td><td>Debounced incremental rebuild</td></tr>
+        <tr><td><code>--watch-debounce SECONDS</code></td><td>Default 30</td></tr>
+        <tr><td><code>--live-graph</code></td><td>Rebuild when file/line totals increase</td></tr>
+        <tr><td><code>--live-graph-interval SECONDS</code></td><td>Default 30</td></tr>
+        <tr><td><code>--print-metrics</code></td><td>JSON file/line counts, exit</td></tr>
+        <tr><td><code>--export FMT …</code></td><td>Export after build</td></tr>
+        <tr><td><code>--db-path PATH</code></td><td>Custom timeline DB</td></tr>
+        <tr><td><code>--mcp</code></td><td>HTTP MCP on 7331 after build</td></tr>
+        <tr><td><code>--log-level LEVEL</code></td><td>DEBUG … ERROR</td></tr>
+        <tr><td><code>--dump-timeline</code></td><td>Timeline JSON to stdout</td></tr>
+        <tr><td><code>--dump-changes</code></td><td>Snapshot diff</td></tr>
+        <tr><td><code>--dump-churn</code></td><td>Churn rankings</td></tr>
+        <tr><td><code>--node-id ID</code></td><td>Filter timeline dump</td></tr>
+        <tr><td><code>--snapshot-from/to ID</code></td><td>Change dump range</td></tr>
+        <tr><td><code>--churn-file PATH</code></td><td>Filter churn</td></tr>
+        <tr><td><code>--churn-limit N</code></td><td>Default 25</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Requires at least one of: <code>--build</code>, <code>--watch</code>, <code>--live-graph</code> (unless query/metrics-only).</p>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

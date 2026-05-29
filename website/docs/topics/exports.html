@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Export formats — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="exports">
+<script>
+  window.DOC_META = {
+    page: 'exports',
+    title: 'Export formats',
+    lead: 'Export your knowledge graph to JSON, HTML, Markdown, GraphML, Cypher, or an Obsidian vault for documentation and external tools.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Export formats</h1>
+
+  <h2 id="cli-export">Codegenome CLI</h2>
+  <div class="doc-code-block"><pre>codegenome export --format json --path .
+codegenome export --format html --path .
+codegenome export --format obsidian --path .
+codegenome export --format cypher --path .</pre></div>
+  <p>Supported formats on the Click CLI: <code>json</code>, <code>html</code>, <code>cypher</code>, <code>obsidian</code>.</p>
+
+  <h2 id="legacy-export">Legacy CLI (more formats)</h2>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --build --export json html markdown graphml cypher obsidian</pre></div>
+
+  <h2 id="formats">Format reference</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Format</th><th>Use case</th><th>Output</th></tr></thead>
+      <tbody>
+        <tr><td><code>json</code></td><td>APIs, CI artifacts, custom tooling</td><td><code>.genome/exports/graph.json</code></td></tr>
+        <tr><td><code>html</code></td><td>Shareable interactive graph</td><td><code>graph.html</code> in exports dir</td></tr>
+        <tr><td><code>markdown</code></td><td>Docs, reports</td><td>Markdown report file</td></tr>
+        <tr><td><code>graphml</code></td><td>Gephi, yEd, graph tools</td><td><code>.graphml</code> file</td></tr>
+        <tr><td><code>cypher</code></td><td>Neo4j import</td><td><code>.cypher</code> statements</td></tr>
+        <tr><td><code>obsidian</code></td><td>PKM vault with wikilinks</td><td>Directory of notes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="doc-note">
+    <p class="doc-note-title">Note</p>
+    <p>You must run <code>codegenome analyze .</code> before <code>export</code>. If no graph exists, the CLI exits with an error.</p>
+  </div>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

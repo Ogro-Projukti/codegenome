@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Command reference — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="commands">
+<script>
+  window.DOC_META = {
+    page: 'commands',
+    title: 'Command reference',
+    lead: 'Complete reference for codegenome subcommands: analyze, export, mcp-start, evolve, rules, and tui.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Command reference</h1>
+
+  <h2 id="analyze">analyze</h2>
+  <p>Tree-sitter scan, AST extraction, graph build, SQLite persistence.</p>
+  <div class="doc-code-block"><pre>codegenome analyze [PATH]</pre></div>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Argument</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>PATH</code></td><td><code>.</code></td><td>Workspace directory to analyze</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>Example:</strong></p>
+  <div class="doc-code-block"><pre>codegenome analyze .
+codegenome analyze /home/dev/my-app</pre></div>
+
+  <h2 id="export">export</h2>
+  <p>Export the current graph store. Requires a prior <code>analyze</code>.</p>
+  <div class="doc-code-block"><pre>codegenome export --format FORMAT [--path PATH]</pre></div>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Required</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--format</code></td><td>Yes</td><td><code>obsidian</code>, <code>html</code>, <code>cypher</code>, <code>json</code></td></tr>
+        <tr><td><code>--path</code></td><td>No</td><td>Workspace (default <code>.</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="doc-code-block"><pre>codegenome export --format html --path .
+codegenome export --format obsidian --path .</pre></div>
+
+  <h2 id="mcp-start">mcp-start</h2>
+  <p>Start MCP server with stdio transport for the workspace database.</p>
+  <div class="doc-code-block"><pre>codegenome mcp-start [--path PATH]</pre></div>
+  <p>For HTTP on port 7331, use <a href="mcp.html">MCP server</a> or legacy <code>--mcp</code> flag.</p>
+
+  <h2 id="evolve">evolve</h2>
+  <p>Initial build, optional WebSocket live mode, HTTP graph UI, file watcher for <code>.py</code> files.</p>
+  <div class="doc-code-block"><pre>codegenome evolve [--live] [PATH]</pre></div>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--live</code></td><td>Enable WebSocket broadcast on <code>ws://127.0.0.1:8765</code></td></tr>
+        <tr><td><code>PATH</code></td><td>Workspace (default <code>.</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="rules">rules</h2>
+  <p>Generate agent instruction files (Cursor rules, Copilot, AGENTS.md, etc.).</p>
+  <div class="doc-code-block"><pre>codegenome rules [--client CLIENT]... [--port PORT] [--dry-run] [PATH]</pre></div>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--client</code></td><td><code>all</code></td><td><code>cursor</code>, <code>copilot</code>, <code>windsurf</code>, <code>agents</code>, <code>all</code> (repeatable)</td></tr>
+        <tr><td><code>--port</code></td><td><code>7331</code></td><td>MCP port embedded in templates</td></tr>
+        <tr><td><code>--dry-run</code></td><td>off</td><td>Print paths without writing</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="doc-code-block"><pre>codegenome rules --client cursor --port 7331 .
+codegenome rules --client all --dry-run .</pre></div>
+
+  <h2 id="tui">tui</h2>
+  <p>Launch the Textual interactive dashboard.</p>
+  <div class="doc-code-block"><pre>codegenome tui</pre></div>
+  <p>No arguments. See <a href="../topics/tui.html">Terminal UI</a>.</p>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

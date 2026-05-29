@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quick start — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="quickstart">
+<script>
+  window.DOC_META = {
+    page: 'quickstart',
+    title: 'Quick start',
+    lead: 'Install Codegenome, build your first knowledge graph, explore it in the TUI, export HTML, and optionally connect an AI client via MCP.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Quick start</h1>
+
+  <h2 id="install">1. Install</h2>
+  <div class="doc-code-block">
+    <button class="copy-btn" type="button" data-copy="pip install codegenome">Copy</button>
+    <pre>pip install codegenome</pre>
+  </div>
+
+  <h2 id="analyze">2. Analyze your project</h2>
+  <p>Change into any repository you want to map:</p>
+  <div class="doc-code-block">
+    <button class="copy-btn" type="button" data-copy="cd ~/projects/my-app&#10;codegenome analyze .">Copy</button>
+    <pre>cd ~/projects/my-app
+codegenome analyze .</pre>
+  </div>
+  <p>Expected output includes node and edge counts. Data is written to <code>.genome/</code>.</p>
+
+  <h2 id="tui">3. Open the TUI</h2>
+  <div class="doc-code-block"><pre>codegenome tui</pre></div>
+  <p>The Textual dashboard lets you browse the graph, run builds, and manage workspace paths. See <a href="../topics/tui.html">Terminal UI</a>.</p>
+
+  <h2 id="export">4. Export for sharing</h2>
+  <div class="doc-code-block"><pre>codegenome export --format html --path .
+codegenome export --format json --path .</pre></div>
+  <p>Exports land in <code>.genome/exports/</code>.</p>
+
+  <h2 id="watch">5. (Optional) Live watch mode</h2>
+  <p>Rebuild the graph as files change and open a browser graph view:</p>
+  <div class="doc-code-block"><pre>codegenome evolve --live .</pre></div>
+  <p>See <a href="../topics/watch-live.html">Watch &amp; live graph</a>.</p>
+
+  <h2 id="mcp">6. (Optional) Connect an AI agent</h2>
+  <ol>
+    <li>Ensure the graph exists (<code>codegenome analyze .</code>).</li>
+    <li>Start MCP: <code>codegenome mcp-start</code> (stdio) or use the legacy HTTP server — <a href="../reference/mcp.html">MCP server</a>.</li>
+    <li>Install client config: <code>python -m codegenome.installer --db-path "$(pwd)/.genome/watcher.db" --client cursor</code></li>
+    <li>Generate rules: <code>codegenome rules --client cursor .</code></li>
+  </ol>
+  <p>Full walkthrough: <a href="../howto/cursor-setup.html">Cursor + MCP setup</a>.</p>
+
+  <h2 id="cheat-sheet">Cheat sheet</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Goal</th><th>Command</th></tr></thead>
+      <tbody>
+        <tr><td>Build graph</td><td><code>codegenome analyze .</code></td></tr>
+        <tr><td>Interactive UI</td><td><code>codegenome tui</code></td></tr>
+        <tr><td>Export HTML</td><td><code>codegenome export --format html --path .</code></td></tr>
+        <tr><td>Live watch + UI</td><td><code>codegenome evolve --live .</code></td></tr>
+        <tr><td>Agent rules</td><td><code>codegenome rules --client all .</code></td></tr>
+        <tr><td>MCP (stdio)</td><td><code>codegenome mcp-start</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>

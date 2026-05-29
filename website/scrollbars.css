@@ -1,0 +1,92 @@
+/* Themed scrollbars — Codegenome dark green / accent */
+
+:root {
+  --scrollbar-track: #060f0c;
+  --scrollbar-track-raised: #0a1f18;
+  --scrollbar-thumb: #1a4d3a;
+  --scrollbar-thumb-hover: #00ffaa;
+  --scrollbar-thumb-active: #00cc88;
+  --scrollbar-border: rgba(0, 255, 170, 0.12);
+  --scrollbar-glow: rgba(0, 255, 170, 0.25);
+  --scrollbar-size: 10px;
+  --scrollbar-size-thin: 8px;
+}
+
+/* Firefox */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.doc-sidebar,
+.doc-main,
+.terminal-body,
+.doc-code-block pre,
+.doc-table-wrap {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track-raised);
+}
+
+/* Chromium / Safari / Edge */
+::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-track-piece {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    #236b52 0%,
+    var(--scrollbar-thumb) 45%,
+    #143d2e 100%
+  );
+  border: 2px solid var(--scrollbar-track);
+  border-radius: 8px;
+  min-height: 40px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    var(--scrollbar-thumb-hover) 0%,
+    #00d492 100%
+  );
+  border-color: var(--scrollbar-track-raised);
+  box-shadow: 0 0 10px var(--scrollbar-glow);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+/* Narrower bars in sidebars and code blocks */
+.doc-sidebar::-webkit-scrollbar,
+.terminal-body::-webkit-scrollbar,
+.doc-code-block pre::-webkit-scrollbar {
+  width: var(--scrollbar-size-thin);
+  height: var(--scrollbar-size-thin);
+}
+
+.doc-sidebar::-webkit-scrollbar-thumb,
+.terminal-body::-webkit-scrollbar-thumb,
+.doc-code-block pre::-webkit-scrollbar-thumb {
+  border-width: 1px;
+  border-radius: 6px;
+}
+
+.doc-sidebar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track-raised);
+  border-right: 1px solid var(--scrollbar-border);
+}

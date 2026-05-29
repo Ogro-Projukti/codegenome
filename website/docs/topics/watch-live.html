@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watch &amp; live graph — Codegenome documentation</title>
+  <link rel="icon" type="image/png" href="../../logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../docs.css">
+</head>
+<body data-page="watch-live">
+<script>
+  window.DOC_META = {
+    page: 'watch-live',
+    title: 'Watch & live graph',
+    lead: 'Keep your knowledge graph fresh with file watchers, live metric polling, WebSocket updates, and an in-browser graph UI.'
+  };
+</script>
+<div class="doc-main-content">
+  <h1>Watch &amp; live graph</h1>
+
+  <h2 id="evolve">Evolve command (recommended)</h2>
+  <p><code>codegenome evolve</code> runs an initial build, starts a local HTTP server for the HTML graph, watches <code>.py</code> files, and optionally broadcasts deltas over WebSocket:</p>
+  <div class="doc-code-block">
+    <button class="copy-btn" type="button" data-copy="codegenome evolve --live .">Copy</button>
+    <pre>codegenome evolve --live .</pre>
+  </div>
+  <ul>
+    <li>HTTP UI: <code>http://localhost:8000/graph.html?live=1</code></li>
+    <li>WebSocket (with <code>--live</code>): <code>ws://127.0.0.1:8765</code></li>
+  </ul>
+
+  <h2 id="legacy-watch">Legacy watch mode</h2>
+  <p>The flag-based CLI supports debounced rebuilds and metric-based live graph polling:</p>
+  <div class="doc-code-block"><pre># Rebuild after 10s of inactivity
+python -m codegenome --workspace . --build --watch --watch-debounce 10
+
+# Rebuild when file/line counts increase
+python -m codegenome --workspace . --build --live-graph --live-graph-interval 60</pre></div>
+
+  <h2 id="mcp-watch">MCP + watch together</h2>
+  <p>For AI agents that need a continuously updated graph:</p>
+  <div class="doc-code-block"><pre>python -m codegenome --workspace . --build --mcp --watch</pre></div>
+  <p>HTTP MCP listens on <code>127.0.0.1:7331</code> by default. See <a href="../reference/mcp.html">MCP server</a>.</p>
+
+  <h2 id="when-to-use">When to use which mode</h2>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Mode</th><th>Best for</th></tr></thead>
+      <tbody>
+        <tr><td><code>evolve --live</code></td><td>Local dev with browser graph + surgical Python updates</td></tr>
+        <tr><td><code>--watch</code></td><td>Headless incremental rebuilds (CI laptop, servers)</td></tr>
+        <tr><td><code>--live-graph</code></td><td>Large repos where line/file growth triggers rebuilds</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<script src="../../docs-shell.js" data-site-root="../.."></script>
+</body>
+</html>
