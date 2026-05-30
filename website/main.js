@@ -244,3 +244,127 @@ function initCanvas() {
   
   draw();
 }
+
+// --- GitHub & PyPI Stats with LocalStorage Cache ---
+async function fetchStats() {
+  try {
+    // Read from cache
+    const cachedGh = localStorage.getItem('cg_gh_stats');
+    if (cachedGh) {
+      const data = JSON.parse(cachedGh);
+      const s = document.getElementById('github-stars');
+      const f = document.getElementById('github-forks');
+      if (s) s.textContent = data.stars;
+      if (f) f.textContent = data.forks;
+    }
+    
+    // Fetch fresh
+    const ghRes = await fetch('https://api.github.com/repos/Ogro-Projukti/codegenome');
+    if (ghRes.ok) {
+      const ghData = await ghRes.json();
+      const stars = ghData.stargazers_count || 0;
+      const forks = ghData.forks_count || 0;
+      const s = document.getElementById('github-stars');
+      const f = document.getElementById('github-forks');
+      if (s) s.textContent = stars;
+      if (f) f.textContent = forks;
+      localStorage.setItem('cg_gh_stats', JSON.stringify({stars, forks}));
+    } else if (!cachedGh) {
+      const s = document.getElementById('github-stars');
+      const f = document.getElementById('github-forks');
+      if (s) s.textContent = "N/A";
+      if (f) f.textContent = "N/A";
+    }
+
+    // PyPI Stats
+    const cachedPypi = localStorage.getItem('cg_pypi_stats');
+    const pEl = document.getElementById('pypi-downloads');
+    if (cachedPypi && pEl) {
+      pEl.textContent = cachedPypi;
+    }
+    
+    const pypiRes = await fetch('https://img.shields.io/pypi/dm/codegenome.json');
+    if (pypiRes.ok) {
+      const pypiData = await pypiRes.json();
+      const val = (pypiData.value || "N/A").replace('/month', '');
+      if (pEl) pEl.textContent = val;
+      localStorage.setItem('cg_pypi_stats', val);
+    } else if (!cachedPypi && pEl) {
+      pEl.textContent = "N/A";
+    }
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+  }
+}
+
+// --- Top Contributors with LocalStorage Cache ---
+function renderContributors(contributors) {
+  const container = document.getElementById('contributors-grid');
+  if (!container) return;
+  container.innerHTML = '';
+  contributors.forEach(c => {
+    const card = document.createElement('a');
+    card.href = c.html_url;
+    card.target = '_blank';
+    card.rel = 'noopener';
+    card.className = 'contributor-card';
+    card.title = c.login;
+    
+    const img = document.createElement('img');
+    img.src = c.avatar_url;
+    img.alt = c.login;
+    img.className = 'contributor-avatar';
+    img.loading = 'lazy';
+    
+    const info = document.createElement('div');
+    info.className = 'contributor-info';
+    
+    const name = document.createElement('div');
+    name.className = 'contributor-name';
+    name.textContent = c.login;
+    
+    const commits = document.createElement('div');
+    commits.className = 'contributor-commits';
+    commits.textContent = `${c.contributions} commit${c.contributions !== 1 ? 's' : ''}`;
+    
+    info.appendChild(name);
+    info.appendChild(commits);
+    
+    card.appendChild(img);
+    card.appendChild(info);
+    
+    container.appendChild(card);
+  });
+}
+
+async function fetchContributors() {
+  const container = document.getElementById('contributors-grid');
+  try {
+    const cached = localStorage.getItem('cg_contributors');
+    if (cached) {
+      renderContributors(JSON.parse(cached));
+    }
+    
+    const res = await fetch('https://api.github.com/repos/Ogro-Projukti/codegenome/contributors');
+    if (res.ok) {
+      const contributors = await res.json();
+      renderContributors(contributors);
+      localStorage.setItem('cg_contributors', JSON.stringify(contributors));
+    } else if (!cached && container) {
+      container.innerHTML = 'Failed to load contributors.';
+    }
+  } catch (error) {
+    console.error('Error fetching contributors:', error);
+    if (container && !localStorage.getItem('cg_contributors')) {
+      container.innerHTML = 'Failed to load contributors.';
+    }
+  }
+}
+
+// Initialize fetches on load
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('community')) {
+    fetchStats();
+    fetchContributors();
+  }
+});
