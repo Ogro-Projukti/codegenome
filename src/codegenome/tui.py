@@ -30,8 +30,18 @@ class CodeGenomeTUI(App):
         padding: 1 2;
         border: solid blue;
         margin: 1 1 0 1;
+        layout: vertical;
+    }
+
+    .command-row {
+        height: auto;
         layout: horizontal;
         align: center middle;
+        margin: 0 0 1 0;
+    }
+
+    .command-row:last-child {
+        margin-bottom: 0;
     }
     
     Button {
@@ -63,13 +73,17 @@ class CodeGenomeTUI(App):
             yield Label("Workspace Root:")
             yield Input(value=".", id="workspace-input", placeholder="Enter path to workspace...")
             
-        with Horizontal(id="commands-container"):
-            yield Button("Analyze", id="btn-analyze", variant="primary")
-            yield Button("Export", id="btn-export", variant="primary")
-            yield Button("Generate AI Rules", id="btn-rules", variant="primary")
-            yield Button("Start MCP", id="btn-mcp", variant="success")
-            yield Button("Live Evolve", id="btn-evolve", variant="success")
-            yield Button("Stop Active Processes", id="btn-stop", variant="error")
+        with Container(id="commands-container"):
+            with Horizontal(classes="command-row"):
+                yield Button("Analyze", id="btn-analyze", variant="primary")
+                yield Button("Export", id="btn-export", variant="primary")
+                yield Button("Generate AI Rules", id="btn-rules", variant="primary")
+                yield Button("Start MCP", id="btn-mcp", variant="success")
+            with Horizontal(classes="command-row"):
+                yield Button("Live Evolve (Local)", id="btn-evolve-local", variant="success")
+                yield Button("Live Evolve (LAN)", id="btn-evolve-lan", variant="success")
+                yield Button("Stop Active Processes", id="btn-stop", variant="error")
+                yield Button("Quit", id="btn-quit", variant="default")
             
         with Container(id="log-container"):
             yield Label("Console Log:")
@@ -110,10 +124,20 @@ class CodeGenomeTUI(App):
             self.run_command(["codegenome", "rules", "--client", "all", workspace])
         elif button_id == "btn-mcp":
             self.run_command(["codegenome", "mcp-start", "--path", workspace], is_background=True)
-        elif button_id == "btn-evolve":
-            self.run_command(["codegenome", "evolve", "--live", workspace], is_background=True)
+        elif button_id == "btn-evolve-local":
+            self.run_command(
+                ["codegenome", "evolve", "--live", workspace],
+                is_background=True,
+            )
+        elif button_id == "btn-evolve-lan":
+            self.run_command(
+                ["codegenome", "evolve", "--live", "--lan", workspace],
+                is_background=True,
+            )
         elif button_id == "btn-stop":
             self.stop_all_processes()
+        elif button_id == "btn-quit":
+            self.quit_app()
 
     def run_command(self, cmd: list[str], is_background: bool = False) -> None:
         """Run a CLI command in a worker.
@@ -188,6 +212,19 @@ class CodeGenomeTUI(App):
             except Exception as e:
                 self.log_widget.write(f"[red]Failed to terminate PID {p.pid}: {e}[/red]")
         self.active_processes.clear()
+
+    def quit_app(self) -> None:
+        """Stop background processes and exit the TUI."""
+        if self.active_processes:
+            self.log_widget.write("[yellow]Stopping background processes...[/yellow]")
+            for process in list(self.active_processes):
+                try:
+                    process.terminate()
+                    self.log_widget.write(f"[yellow]Terminated process (PID: {process.pid})[/yellow]")
+                except Exception as e:
+                    self.log_widget.write(f"[red]Failed to terminate PID {process.pid}: {e}[/red]")
+            self.active_processes.clear()
+        self.exit()
 
 def main():
     """Entry point for the CodeGenome TUI."""

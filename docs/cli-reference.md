@@ -59,9 +59,12 @@ Run a live observer with a browser-based graph UI. Watches `.py` file changes an
 ```bash
 codegenome evolve .
 codegenome evolve --live .
+codegenome evolve --live --lan .
 ```
 
 With `--live`, a WebSocket server broadcasts graph updates. The UI is served at `http://localhost:8000/graph.html?live=1`.
+
+With `--lan`, HTTP and WebSocket bind to all interfaces (`0.0.0.0`) so other devices on the same network can open the graph. The CLI prints a shareable LAN URL (for example `http://192.168.1.42:8000/graph.html?live=1`). Use `--live --lan` together for real-time updates on remote viewers.
 
 ### `mcp-start`
 
@@ -92,6 +95,12 @@ Launch the interactive terminal dashboard.
 ```bash
 codegenome tui
 ```
+
+From the TUI you can start live graph observation in two modes:
+
+- **Live Evolve (Local)** — graph UI and WebSocket on localhost only
+- **Live Evolve (LAN)** — exposes HTTP and WebSocket on the local network so other devices can view the graph
+- **Quit** — stops any background processes and exits the TUI
 
 ---
 

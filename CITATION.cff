@@ -6,7 +6,7 @@ authors:
     orcid: "https://orcid.org/0009-0008-0026-2947"
     affiliation: "United International University"
 title: "CodeGenome"
-version: "0.1.3"
+version: "0.1.4"
 date-released: "2026-05-30"
 license: "MIT"
 repository-code: "https://github.com/Ogro-Projukti/codegenome"

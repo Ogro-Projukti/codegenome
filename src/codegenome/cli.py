@@ -108,13 +108,19 @@ def mcp_start(path: str):
 
 @cli.command()
 @click.option("--live", is_flag=True, help="Enable WebSocket real-time broadcast.")
+@click.option(
+    "--lan",
+    is_flag=True,
+    help="Expose HTTP and WebSocket on the local network (0.0.0.0).",
+)
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
-def evolve(path: str, live: bool):
+def evolve(path: str, live: bool, lan: bool):
     """Start real-time architectural observer and open live UI.
 
     Args:
         path (str): The workspace directory path to observe.
         live (bool): Whether to enable WebSocket real-time broadcast.
+        lan (bool): Whether to bind services for LAN access.
     """
     import time
     import threading
@@ -131,13 +137,24 @@ def evolve(path: str, live: bool):
     click.echo(f"Running initial build for {workspace}...")
     engine.build(full=False)
     
+    from codegenome.network_utils import get_lan_ip
+
+    http_port = 8000
+    ws_port = 8765
+    bind_host = "0.0.0.0" if lan else "127.0.0.1"
+    lan_ip = get_lan_ip() if lan else "127.0.0.1"
+
     live_server = None
     if live:
         from codegenome.live_server import LiveGraphServer
-        live_server = LiveGraphServer(host="127.0.0.1", port=8765)
+        live_server = LiveGraphServer(host=bind_host, port=ws_port)
         live_server.start_background()
-        click.echo("WebSocket server initialized on ws://127.0.0.1:8765")
-    
+        if lan:
+            click.echo(f"WebSocket server listening on ws://0.0.0.0:{ws_port}")
+            click.echo(f"  LAN clients connect to ws://{lan_ip}:{ws_port}")
+        else:
+            click.echo(f"WebSocket server initialized on ws://127.0.0.1:{ws_port}")
+
     def serve_forever():
         import os
         os.chdir(engine.export_dir)
@@ -145,15 +162,22 @@ def evolve(path: str, live: bool):
         class QuietHandler(SimpleHTTPRequestHandler):
             def log_message(self, format, *args):
                 pass
-        with TCPServer(("", 8000), QuietHandler) as httpd:
+        with TCPServer((bind_host if lan else "", http_port), QuietHandler) as httpd:
             httpd.serve_forever()
-            
+
     server_thread = threading.Thread(target=serve_forever, daemon=True)
     server_thread.start()
-    
-    url = "http://localhost:8000/graph.html?live=1"
-    click.echo(f"HTTP Server started. Opening live graph UI at {url}...")
-    webbrowser.open(url)
+
+    live_query = "?live=1"
+    local_url = f"http://localhost:{http_port}/graph.html{live_query}"
+    if lan:
+        lan_url = f"http://{lan_ip}:{http_port}/graph.html{live_query}"
+        click.echo(f"HTTP server listening on http://0.0.0.0:{http_port}")
+        click.echo(f"  Open locally:  {local_url}")
+        click.echo(f"  Share on LAN:  {lan_url}")
+    else:
+        click.echo(f"HTTP Server started. Opening live graph UI at {local_url}...")
+    webbrowser.open(local_url)
     
     click.echo("Watching for .py file changes (Press Ctrl+C to stop)...")
     observer = Observer()
