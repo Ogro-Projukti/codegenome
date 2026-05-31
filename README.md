@@ -30,10 +30,10 @@ As your AI agent (**Cursor, Claude Desktop, or custom MCP clients**) generates n
 ## ✨ What Codegenome Can Do
 
 ### 🧠 Codebase Intelligence & Graph Building
-Codegenome deeply understands your code. It parses your source files, incrementally builds a knowledge graph, and outputs structured intelligence. Whether you're querying for dependencies or analyzing churn, Codegenome provides the structural truth of your codebase. Scans honor `.gitignore` and `.genomeignore` (including nested rules), so build artifacts and local-only paths stay out of the graph.
+Codegenome deeply understands your code. It parses your source files, incrementally builds a knowledge graph, and outputs structured intelligence. Whether you're querying for dependencies or analyzing churn, Codegenome provides the structural truth of your codebase.
 
 ### ⚡ Live Graph Visualization & Watch Mode
-Keep your codebase intelligence fresh in real-time. As you write code, Codegenome watches your workspace and automatically updates the graph, so your agents and queries are never out of sync. From **v0.1.4**, share the live graph with phones, tablets, or teammates on the same LAN using `codegenome evolve --live --lan .`.
+Keep your codebase intelligence fresh in real-time. As you write code, Codegenome watches your workspace and automatically updates the graph, so your agents and queries are never out of sync.
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/live-graph-1.png" alt="Live Graph Visualization" width="48%" />
@@ -107,7 +107,6 @@ codegenome evolve --live --lan .
 | ⚙️ [Installation](docs/installation.md) | pip, venv, MCP setup |
 | 🔌 [MCP integration](docs/mcp-integration.md) | Server modes and client installer |
 | 🧩 [Extensions](extensions/README.md) | Cursor rules and Copilot templates |
-| 📋 [Changelog](CHANGELOG.md) | Release notes (current: **v0.1.4**) |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, tests, pull requests |
 
 ## ⚖️ License

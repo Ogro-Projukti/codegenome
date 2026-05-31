@@ -193,7 +193,7 @@ This requires the `dev` extra (`pyinstaller`).
 
 6. **Commit** with a clear message describing *why* the change was made.
 
-If you change the package version, update `src/codegenome/version.py`, `pyproject.toml`, `CITATION.cff`, `CHANGELOG.md`, and any version assertions in tests (for example `tests/test_imports.py`).
+If you change the package version, update `src/codegenome/version.py` and any version assertions in tests (for example `tests/test_imports.py`).
 
 ## Submitting a pull request
 

@@ -20,28 +20,6 @@ Both operate on a **workspace** (project root). By default that is the current d
 
 Override the database with `--db-path` on the legacy CLI, or pass `--db-path` to `python -m codegenome.mcp_server`.
 
-## File scanning and ignore rules
-
-Since **v0.1.4**, Codegenome skips paths using gitignore-compatible rules:
-
-| Source | Purpose |
-|--------|---------|
-| Built-in defaults | `.git/`, `.venv/`, `node_modules/`, `__pycache__/`, `*.pyc`, `.genome/`, `.genomeignore` |
-| `.gitignore` | Standard Git ignore files anywhere in the workspace (nested rules supported) |
-| `.genomeignore` | Codegenome-specific ignores without changing Git behavior |
-
-Nested `.gitignore` files apply only within their directory (same semantics as Git). Negation (`!pattern`) and anchored patterns (`/target`) are supported.
-
-Example `.genomeignore` at the workspace root:
-
-```gitignore
-# Local experiments — excluded from scans only
-scratch/
-*.local.py
-```
-
-Run `codegenome tui` and open the workspace info page to preview tracked folders, extensions, and discovered ignore files before building.
-
 ---
 
 ## Modern CLI (`codegenome`)
