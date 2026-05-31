@@ -627,6 +627,12 @@
             letter-spacing: 0.06em;
         }
 
+        .ai-helper-text {
+            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
         .ai-field select,
         .ai-field input,
         .ai-chat-compose textarea {
@@ -936,12 +942,14 @@
                     </div>
                     <div class="ai-field ai-wide">
                         <label for="ai-context-size">Context</label>
-                        <select id="ai-context-size">
-                            <option value="small" selected>Small</option>
-                            <option value="minimal">Minimal</option>
-                            <option value="medium">Medium</option>
-                            <option value="full">Full</option>
+                        <select id="ai-context-size" title="Choose how much graph data is sent with each AI chat request.">
+                            <option value="small" selected title="Small: sends a compact graph slice with key nodes, a few import edges, and selected-node context.">Small</option>
+                            <option value="minimal" title="Minimal: sends the smallest graph slice for quota-sensitive models.">Minimal</option>
+                            <option value="medium" title="Medium: sends a balanced graph slice with more important nodes and imports.">Medium</option>
+                            <option value="full" title="Full: sends a large graph slice with many nodes, imports, edges, and selected-node neighbors.">Full</option>
+                            <option value="max" title="MAX: sends the largest graph slice, prioritizing import edges for dependency and circularity analysis.">MAX</option>
                         </select>
+                        <div class="ai-helper-text" id="ai-context-help" title="This describes the graph context attached to each chat request."></div>
                     </div>
                     <div class="ai-field ai-wide" id="ai-api-key-field">
                         <label for="ai-api-key">API key</label>
@@ -997,6 +1005,13 @@
             providersById: new Map(),
             messages: [],
             busy: false
+        };
+        const aiContextHelp = {
+            minimal: 'Minimal sends up to 4 important nodes, 12 import edges, 8 representative edges, and 3 selected-node neighbors.',
+            small: 'Small sends up to 8 important nodes, 32 import edges, 16 representative edges, and 6 selected-node neighbors.',
+            medium: 'Medium sends up to 16 important nodes, 96 import edges, 32 representative edges, and 12 selected-node neighbors.',
+            full: 'Full sends up to 40 important nodes, 256 import edges, 96 representative edges, and 24 selected-node neighbors.',
+            max: 'MAX sends up to 120 important nodes, 1000 import edges, 240 representative edges, and 48 selected-node neighbors.'
         };
 
         function calculateMetrics() {
@@ -1465,6 +1480,8 @@
                 renderAiSavedHint();
                 resetAiModels();
             });
+            document.getElementById('ai-context-size').addEventListener('change', renderAiContextHelp);
+            renderAiContextHelp();
 
             try {
                 const response = await fetch('/ai/settings', { cache: 'no-store' });
@@ -1490,7 +1507,8 @@
                 option.textContent = provider.label;
                 providerSelect.appendChild(option);
             });
-            providerSelect.value = settings.default_provider || 'openai';
+            const defaultProvider = settings.default_provider || 'openai';
+            providerSelect.value = aiState.providersById.has(defaultProvider) ? defaultProvider : 'openai';
             renderAiProviderFields();
         }
 
@@ -1502,13 +1520,16 @@
             const saveRow = document.getElementById('ai-save-row');
             const saveKey = document.getElementById('ai-save-key');
 
+            keyField.style.display = 'flex';
             if (provider.requires_api_key === false) {
-                keyField.style.display = 'none';
+                keyInput.disabled = true;
+                keyInput.value = '';
+                keyInput.placeholder = 'Not required for local Ollama';
                 saveRow.querySelector('label').style.display = 'none';
                 saveKey.checked = false;
-                keyInput.value = '';
             } else {
-                keyField.style.display = 'flex';
+                keyInput.disabled = false;
+                keyInput.placeholder = 'Use a saved key or paste one for this session';
                 saveRow.querySelector('label').style.display = 'inline-flex';
             }
         }
@@ -1522,6 +1543,15 @@
             }
             const saved = aiState.settings?.saved?.[provider];
             setAiStatus(saved ? 'Saved key available for this provider.' : 'Enter an API key, then load models.');
+        }
+
+        function renderAiContextHelp() {
+            const select = document.getElementById('ai-context-size');
+            const helper = document.getElementById('ai-context-help');
+            if (!select || !helper) return;
+            const message = aiContextHelp[select.value] || aiContextHelp.small;
+            helper.textContent = message;
+            helper.title = `${message} Data comes from the current .genome graph export.`;
         }
 
         function resetAiModels() {

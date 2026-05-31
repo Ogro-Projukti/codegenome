@@ -20,11 +20,12 @@ def test_settings_payload_includes_new_chat_providers(tmp_path: Path) -> None:
 
     providers = {provider["id"]: provider for provider in payload["providers"]}
 
-    assert list(providers) == ["openai", "google", "groq", "ollama"]
+    assert list(providers) == ["openai", "google", "groq", "ollama", "ollama_cloud"]
     assert providers["openai"]["requires_api_key"] is True
     assert providers["google"]["requires_api_key"] is True
     assert providers["groq"]["requires_api_key"] is True
     assert providers["ollama"]["requires_api_key"] is False
+    assert providers["ollama_cloud"]["requires_api_key"] is True
     assert "default_base_url" not in providers["ollama"]
 
 
@@ -85,7 +86,7 @@ def test_build_graph_context_caps_large_payloads(tmp_path: Path) -> None:
     context = build_graph_context(graph_path, selected_node_id="file_0.py")
 
     assert len(context) <= ai_chat.MAX_CONTEXT_CHARS + 80
-    assert "source" not in context
+    assert "Import edges:" in context
     assert "...[truncated]" in context
 
 
@@ -125,6 +126,37 @@ def test_build_graph_context_profiles_change_budget(tmp_path: Path) -> None:
     assert len(full) > len(minimal)
 
 
+def test_build_graph_context_max_profile_includes_more_import_edges(tmp_path: Path) -> None:
+    graph_path = tmp_path / ".genome" / "graph.json"
+    graph_path.parent.mkdir()
+    graph_path.write_text(
+        json.dumps(
+            {
+                "nodes": [
+                    {"id": f"file_{index}.py", "node_type": "file", "name": f"file_{index}.py"}
+                    for index in range(30)
+                ],
+                "edges": [
+                    {
+                        "source": f"file_{index}.py",
+                        "target": f"import:file_{index}.py:1:dep_{index}",
+                        "edge_type": "imports",
+                    }
+                    for index in range(30)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    minimal = build_graph_context(graph_path, context_size="minimal")
+    max_context = build_graph_context(graph_path, context_size="max")
+
+    assert "- context profile: max" in max_context
+    assert "Import edges:" in max_context
+    assert max_context.count('"edge_type": "imports"') > minimal.count('"edge_type": "imports"')
+
+
 def test_load_models_supports_keyless_ollama(monkeypatch, tmp_path: Path) -> None:
     calls = []
 
@@ -141,6 +173,22 @@ def test_load_models_supports_keyless_ollama(monkeypatch, tmp_path: Path) -> Non
         {"id": "codellama:latest", "label": "codellama:latest"},
         {"id": "llama3.2:latest", "label": "llama3.2:latest"},
     ]
+
+
+def test_load_models_supports_ollama_cloud(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    def fake_request_json(url, **kwargs):
+        calls.append((url, kwargs))
+        return {"models": [{"model": "gpt-oss:120b"}]}
+
+    monkeypatch.setattr(ai_chat, "_request_json", fake_request_json)
+
+    models = ai_chat.load_models(tmp_path / ".genome", "ollama_cloud", "ollama-key")
+
+    assert calls[0][0] == "https://ollama.com/api/tags"
+    assert calls[0][1]["headers"]["Authorization"] == "Bearer ollama-key"
+    assert models == [{"id": "gpt-oss:120b", "label": "gpt-oss:120b"}]
 
 
 def test_load_models_supports_groq(monkeypatch, tmp_path: Path) -> None:
@@ -215,6 +263,33 @@ def test_chat_completion_supports_ollama_payload(monkeypatch, tmp_path: Path) ->
     assert calls[0][0] == "http://127.0.0.1:11434/api/chat"
     assert calls[0][1]["payload"]["stream"] is False
     assert calls[0][1]["payload"]["options"]["num_predict"] == ai_chat.MAX_RESPONSE_TOKENS
+
+
+def test_chat_completion_supports_ollama_cloud_auth(monkeypatch, tmp_path: Path) -> None:
+    graph_path = tmp_path / ".genome" / "graph.json"
+    graph_path.parent.mkdir()
+    graph_path.write_text(json.dumps({"nodes": [], "edges": []}), encoding="utf-8")
+    calls = []
+
+    def fake_request_json(url, **kwargs):
+        calls.append((url, kwargs))
+        return {"message": {"content": "Cloud answer"}}
+
+    monkeypatch.setattr(ai_chat, "_request_json", fake_request_json)
+
+    answer = ai_chat.chat_completion(
+        tmp_path / ".genome",
+        graph_path,
+        "ollama_cloud",
+        "gpt-oss:120b",
+        [{"role": "user", "content": "What changed?"}],
+        "ollama-key",
+    )
+
+    assert answer == "Cloud answer"
+    assert calls[0][0] == "https://ollama.com/api/chat"
+    assert calls[0][1]["headers"]["Authorization"] == "Bearer ollama-key"
+    assert calls[0][1]["payload"]["stream"] is False
 
 
 def test_chat_completion_caps_openai_compatible_output(monkeypatch, tmp_path: Path) -> None:

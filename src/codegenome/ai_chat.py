@@ -41,6 +41,13 @@ PROVIDERS = {
         "models_url": "http://127.0.0.1:11434/api/tags",
         "chat_url": "http://127.0.0.1:11434/api/chat",
     },
+    "ollama_cloud": {
+        "label": "Ollama Cloud",
+        "api_style": "ollama",
+        "requires_api_key": True,
+        "models_url": "https://ollama.com/api/tags",
+        "chat_url": "https://ollama.com/api/chat",
+    },
 }
 
 CONFIG_FILENAME = "ai-chat.json"
@@ -52,10 +59,46 @@ MAX_CONTEXT_VALUE_CHARS = 180
 MAX_RESPONSE_TOKENS = 900
 DEFAULT_CONTEXT_SIZE = "small"
 CONTEXT_PROFILES = {
-    "full": {"nodes": 40, "edges": 96, "neighbors": 24, "chars": 16_000, "value_chars": 240},
-    "medium": {"nodes": 16, "edges": 32, "neighbors": 12, "chars": 8_000, "value_chars": 180},
-    "small": {"nodes": 8, "edges": 16, "neighbors": 6, "chars": 4_000, "value_chars": 140},
-    "minimal": {"nodes": 4, "edges": 8, "neighbors": 3, "chars": 1_800, "value_chars": 100},
+    "max": {
+        "nodes": 120,
+        "import_edges": 1_000,
+        "edges": 240,
+        "neighbors": 48,
+        "chars": 60_000,
+        "value_chars": 320,
+    },
+    "full": {
+        "nodes": 40,
+        "import_edges": 256,
+        "edges": 96,
+        "neighbors": 24,
+        "chars": 16_000,
+        "value_chars": 240,
+    },
+    "medium": {
+        "nodes": 16,
+        "import_edges": 96,
+        "edges": 32,
+        "neighbors": 12,
+        "chars": 8_000,
+        "value_chars": 180,
+    },
+    "small": {
+        "nodes": 8,
+        "import_edges": 32,
+        "edges": 16,
+        "neighbors": 6,
+        "chars": 4_000,
+        "value_chars": 140,
+    },
+    "minimal": {
+        "nodes": 4,
+        "import_edges": 12,
+        "edges": 8,
+        "neighbors": 3,
+        "chars": 1_800,
+        "value_chars": 100,
+    },
 }
 DEFAULT_HTTP_HEADERS = {
     "Accept": "application/json",
@@ -117,8 +160,13 @@ def load_models(
             for model in payload.get("models", [])
             if "generateContent" in model.get("supportedGenerationMethods", [])
         ]
-    elif request.provider == "ollama":
-        payload = _request_json(PROVIDERS[request.provider]["models_url"], headers={})
+    elif PROVIDERS[request.provider].get("api_style") == "ollama":
+        headers = (
+            _provider_headers(request.provider, request.api_key)
+            if PROVIDERS[request.provider].get("requires_api_key", True)
+            else {}
+        )
+        payload = _request_json(PROVIDERS[request.provider]["models_url"], headers=headers)
         models = [
             model.get("model") or model.get("name", "")
             for model in payload.get("models", [])
@@ -231,7 +279,7 @@ def chat_completion(
         response = _request_json(
             PROVIDERS[request.provider]["chat_url"],
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers=_ollama_headers(request),
             payload=payload,
             timeout=90,
         )
@@ -300,8 +348,22 @@ def build_graph_context(
             sort_keys=True,
         ),
         "",
-        "Important nodes:",
     ]
+
+    import_edges = [edge for edge in edges if edge.get("edge_type") == "imports"]
+    if import_edges:
+        lines.append("Import edges:")
+        for edge in import_edges[: int(profile["import_edges"])]:
+            lines.append(
+                "- "
+                + json.dumps(
+                    _compact_edge_context(edge, int(profile["value_chars"])),
+                    sort_keys=True,
+                )
+            )
+        lines.append("")
+
+    lines.append("Important nodes:")
     for node in ranked[: int(profile["nodes"])]:
         lines.append(
             "- "
@@ -341,17 +403,7 @@ def build_graph_context(
     lines.append("")
     lines.append("Representative edges:")
     for edge in edges[: int(profile["edges"])]:
-        lines.append(
-            "- "
-            + json.dumps(
-                {
-                    "source": _truncate_context_value(edge.get("source"), int(profile["value_chars"])),
-                    "target": _truncate_context_value(edge.get("target"), int(profile["value_chars"])),
-                    "edge_type": edge.get("edge_type"),
-                },
-                sort_keys=True,
-            )
-        )
+        lines.append("- " + json.dumps(_compact_edge_context(edge, int(profile["value_chars"])), sort_keys=True))
 
     context = _fit_context_lines(lines, int(profile["chars"]))
     if len(context) < len("\n".join(lines)):
@@ -401,6 +453,12 @@ def _provider_headers(provider: str, api_key: str) -> dict[str, str]:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+
+
+def _ollama_headers(request: ProviderRequest) -> dict[str, str]:
+    if PROVIDERS[request.provider].get("requires_api_key", True):
+        return _provider_headers(request.provider, request.api_key)
+    return {"Content-Type": "application/json"}
 
 
 def _request_json(
@@ -487,6 +545,14 @@ def _compact_node_context(
         "is_bridge": node.get("is_bridge"),
         "incoming": in_counts.get(node_id, 0),
         "outgoing": out_counts.get(node_id, 0),
+    }
+
+
+def _compact_edge_context(edge: dict[str, Any], value_chars: int) -> dict[str, Any]:
+    return {
+        "source": _truncate_context_value(edge.get("source"), value_chars),
+        "target": _truncate_context_value(edge.get("target"), value_chars),
+        "edge_type": edge.get("edge_type"),
     }
 
 
