@@ -77,6 +77,12 @@ Export after building:
 codegenome export --format json --path .
 ```
 
+## Ignore rules (v0.1.4+)
+
+Codegenome respects `.gitignore` and `.genomeignore` when scanning. Use `.genomeignore` for paths you want excluded from the knowledge graph but not from Git (for example local scratch directories). Nested ignore files, negation, and anchored patterns follow Git semantics.
+
+See [CLI reference — File scanning and ignore rules](cli-reference.md#file-scanning-and-ignore-rules) for defaults and examples.
+
 ## MCP setup
 
 Build the graph first (`codegenome analyze .`). Then choose a transport:
@@ -153,3 +159,4 @@ This is optional. The default PyPI entry point is the `codegenome` command.
 | [CLI reference](cli-reference.md) | Subcommands, legacy flags, workflows |
 | [MCP integration](mcp-integration.md) | Server modes, installer, tools |
 | [Extensions](../extensions/README.md) | Cursor rules and Copilot templates |
+| [Changelog](../CHANGELOG.md) | Release notes |
