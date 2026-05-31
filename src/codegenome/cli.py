@@ -23,9 +23,12 @@ def analyze(path: str):
     workspace = Path(path).resolve()
     config = WatcherConfig(workspace=workspace, export_formats=("json",))
     engine = WatcherEngine(config)
+
+    def on_progress(message: str) -> None:
+        click.echo(message)
     
     try:
-        result = engine.build(full=False)
+        result = engine.build(full=False, on_progress=on_progress)
         click.echo(f"Build complete: {result.graph.number_of_nodes()} nodes, {result.graph.number_of_edges()} edges.")
     except Exception as e:
         click.echo(f"Error during analysis: {e}", err=True)

@@ -39,6 +39,7 @@ dependencies = [
   "websockets",
   "textual",
   "networkx>=3.2,<4",
+  "pathspec>=0.12,<2",
 ]
 
 [project.optional-dependencies]

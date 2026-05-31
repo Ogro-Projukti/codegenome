@@ -10,7 +10,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import networkx as nx
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -29,6 +29,9 @@ from codegenome.registry import GlobalDependencyRegistry
 LOG = logging.getLogger(__name__)
 
 DEFAULT_EXPORT_FORMATS = ("json", "html", "markdown")
+
+ProgressCallback = Callable[[str], None]
+PARSE_PROGRESS_INTERVAL = 50
 
 
 @dataclass
@@ -201,23 +204,51 @@ class WatcherEngine:
         self._mcp_process: subprocess.Popen[str] | None = None
         self._loaded_existing_graph = self._load_existing_graph()
 
-    def build(self, *, full: bool = False) -> BuildResult:
+    def build(
+        self,
+        *,
+        full: bool = False,
+        on_progress: ProgressCallback | None = None,
+    ) -> BuildResult:
         """Build or rebuild the graph from source files.
 
         Args:
             full (bool, optional): Force a full rebuild instead of incremental. Defaults to False.
+            on_progress (ProgressCallback | None, optional): Optional callback for
+                human-readable progress messages during long-running phases.
 
         Returns:
             BuildResult: The result of the build process.
         """
+        def emit(message: str) -> None:
+            if on_progress is not None:
+                on_progress(message)
+
         incremental = not full and self._loaded_existing_graph
-        scan = self.scanner.scan(incremental=incremental)
-        parses = self._parse_scan(scan)
+        emit("Scanning workspace...")
+        scan = self.scanner.scan(
+            incremental=incremental,
+            on_progress=lambda count: emit(f"Scanning... {count:,} files"),
+        )
+        file_count = len(scan.files)
+        change_parts: list[str] = []
+        if scan.added:
+            change_parts.append(f"{len(scan.added):,} added")
+        if scan.modified:
+            change_parts.append(f"{len(scan.modified):,} modified")
+        if scan.deleted:
+            change_parts.append(f"{len(scan.deleted):,} deleted")
+        change_summary = f" ({', '.join(change_parts)})" if change_parts else ""
+        emit(f"Scan complete: {file_count:,} files{change_summary}")
+
+        parses = self._parse_scan(scan, on_progress=on_progress)
 
         if incremental and self.builder.graph.number_of_nodes() > 0:
+            emit("Updating graph...")
             graph, provides, consumes = self.builder.update(scan, parses)
             label = "incremental"
         else:
+            emit("Building graph...")
             graph, provides, consumes = self.builder.build(scan, parses)
             label = "full"
 
@@ -233,12 +264,14 @@ class WatcherEngine:
                 self._flag_broken_proxy(graph, dep_path, fqn)
 
         self.clusterer.annotate(graph)
+        emit("Analyzing dependencies...")
         intelligence = GraphIntelligence(graph, registry=self.registry)
-        report = intelligence.analyze()
+        intel_report = intelligence.analyze()
 
+        emit("Exporting graph...")
         exporter = GraphExporter(
             graph,
-            report=report,
+            report=intel_report,
             workspace_name=self.workspace.name,
         )
 
@@ -248,7 +281,7 @@ class WatcherEngine:
 
         return BuildResult(
             graph=graph,
-            report=report,
+            report=intel_report,
             snapshot_id=snapshot_id,
             export_paths=export_paths,
         )
@@ -509,15 +542,30 @@ class WatcherEngine:
         self.builder.graph = self.timeline.load_snapshot(latest.snapshot_id)
         return self.builder.graph.number_of_nodes() > 0
 
-    def _parse_scan(self, scan: ScanResult) -> dict:
+    def _parse_scan(
+        self,
+        scan: ScanResult,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> dict:
         parses = {}
-        for record in scan.files:
+        total = len(scan.files)
+        if on_progress is not None:
+            on_progress(f"Parsing 0 / {total:,} files...")
+
+        for index, record in enumerate(scan.files, start=1):
             rel_path = record.path
             if scan.deleted and rel_path in scan.deleted:
                 continue
             parsed = self.parser.parse_file(record.absolute_path)
             if parsed is not None:
                 parses[rel_path] = parsed
+            if on_progress is not None and (
+                index == 1
+                or index == total
+                or index % PARSE_PROGRESS_INTERVAL == 0
+            ):
+                on_progress(f"Parsing {index:,} / {total:,} files...")
         return parses
 
     def _run_exports(
