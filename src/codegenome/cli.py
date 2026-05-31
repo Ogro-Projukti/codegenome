@@ -118,7 +118,7 @@ def mcp_start(path: str, transport: str, port: int):
     db_path = engine.db_path
     engine.close()  # Close the engine since the MCP server process will open its own connection
     
-    click.echo(f"Starting MCP server for workspace {workspace} (DB: {db_path}) via {transport}...")
+    click.echo(f"Starting MCP server for workspace {workspace} (DB: {db_path}) via {transport}...", err=True)
     
     from codegenome.mcp_server import main as mcp_main
     args = ["--db-path", str(db_path), "--transport", transport.lower()]
@@ -146,8 +146,9 @@ def evolve(path: str, live: bool, lan: bool):
     import threading
     import webbrowser
     from http.server import SimpleHTTPRequestHandler
-    from socketserver import TCPServer
+    from socketserver import ThreadingTCPServer
     from watchdog.observers import Observer
+    from codegenome.ai_chat import AIChatError, chat_completion, load_models, settings_payload
     from codegenome.watcher import WatcherConfig, WatcherEngine, SurgicalUpdateHandler
 
     workspace = Path(path).resolve()
@@ -176,13 +177,86 @@ def evolve(path: str, live: bool, lan: bool):
             click.echo(f"WebSocket server initialized on ws://127.0.0.1:{ws_port}")
 
     def serve_forever():
-        import os
-        os.chdir(engine.export_dir)
-        # Suppress logging in SimpleHTTPRequestHandler to keep terminal clean
+        import json
+
         class QuietHandler(SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=str(engine.export_dir), **kwargs)
+
             def log_message(self, format, *args):
                 pass
-        with TCPServer((bind_host if lan else "", http_port), QuietHandler) as httpd:
+
+            def do_GET(self):
+                if self.path == "/ai/settings":
+                    self._send_json(settings_payload(engine.genome_dir))
+                    return
+                super().do_GET()
+
+            def do_POST(self):
+                if self.path == "/ai/models":
+                    self._handle_models()
+                    return
+                if self.path == "/ai/chat":
+                    self._handle_chat()
+                    return
+                self.send_error(404, "Unknown AI endpoint")
+
+            def _handle_models(self):
+                try:
+                    payload = self._read_json_body()
+                    models = load_models(
+                        engine.genome_dir,
+                        str(payload.get("provider", "")),
+                        _optional_string(payload.get("api_key")),
+                        save_api_key=bool(payload.get("save_api_key")),
+                    )
+                    self._send_json({"models": models})
+                except AIChatError as exc:
+                    self._send_json({"error": str(exc)}, status=400)
+                except Exception as exc:  # noqa: BLE001 - keep live server responsive
+                    self._send_json({"error": f"AI model loading failed: {exc}"}, status=500)
+
+            def _handle_chat(self):
+                try:
+                    payload = self._read_json_body()
+                    answer = chat_completion(
+                        engine.genome_dir,
+                        engine.graph_json_path,
+                        str(payload.get("provider", "")),
+                        str(payload.get("model", "")),
+                        payload.get("messages", []),
+                        _optional_string(payload.get("api_key")),
+                        _optional_string(payload.get("selected_node_id")),
+                        _optional_string(payload.get("context_size")),
+                        save_api_key=bool(payload.get("save_api_key")),
+                    )
+                    self._send_json({"message": answer})
+                except AIChatError as exc:
+                    self._send_json({"error": str(exc)}, status=400)
+                except Exception as exc:  # noqa: BLE001 - keep live server responsive
+                    self._send_json({"error": f"AI chat failed: {exc}"}, status=500)
+
+            def _read_json_body(self):
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                raw = self.rfile.read(length) if length else b"{}"
+                return json.loads(raw.decode("utf-8"))
+
+            def _send_json(self, payload, status=200):
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+
+        def _optional_string(value):
+            if value is None:
+                return None
+            text = str(value).strip()
+            return text or None
+
+        with ThreadingTCPServer((bind_host if lan else "", http_port), QuietHandler) as httpd:
             httpd.serve_forever()
 
     server_thread = threading.Thread(target=serve_forever, daemon=True)

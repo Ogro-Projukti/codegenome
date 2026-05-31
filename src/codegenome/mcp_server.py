@@ -547,31 +547,31 @@ def create_server(
 
     @mcp.tool
     @guarded_tool
-    def get_dead_code() -> list[str]:
+    def get_dead_code() -> dict[str, Any]:
         """Detect likely dead code symbols."""
         return service.store.get_dead_code()
 
     @mcp.tool
     @guarded_tool
-    def get_entry_points() -> list[str]:
+    def get_entry_points() -> dict[str, Any]:
         """Detect graph entry points."""
         return service.store.get_entry_points()
 
     @mcp.tool
     @guarded_tool
-    def get_god_nodes() -> list[dict[str, Any]]:
+    def get_god_nodes() -> dict[str, Any]:
         """Return highly connected god nodes."""
         return service.store.get_god_nodes()
 
     @mcp.tool
     @guarded_tool
-    def get_circular_deps() -> list[list[str]]:
+    def get_circular_deps() -> dict[str, Any]:
         """Return circular file import dependencies."""
         return service.store.get_circular_deps()
 
     @mcp.tool
     @guarded_tool
-    def get_complexity(limit: int = 25) -> list[dict[str, Any]]:
+    def get_complexity(limit: int = 25) -> dict[str, Any]:
         """Return top complexity-ranked symbols."""
         return service.store.get_complexity(limit=limit)
 
@@ -597,7 +597,7 @@ def create_server(
         query: str,
         node_type: str | None = None,
         limit: int = 25,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """Search nodes by id, name, qualified name, or file path."""
         return service.store.search_nodes(query, node_type=node_type, limit=limit)
 

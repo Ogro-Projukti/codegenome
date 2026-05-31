@@ -217,7 +217,7 @@ def format_workspace_summary(info: WorkspaceInfo) -> str:
     return (
         f"[bold]Workspace:[/bold] {info.root}  "
         f"[dim]|[/dim]  "
-        f"{file_count} file{'s' if file_count != 1 else ''} in "
+        f"⏳ [bold cyan]Live Tracking:[/bold cyan] {file_count} file{'s' if file_count != 1 else ''} in "
         f"{dir_count} director{'ies' if dir_count != 1 else 'y'}"
     )
 

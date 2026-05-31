@@ -41,6 +41,11 @@ class ActiveProcess:
 class CodeGenomeTUI(App):
     """A Textual app for managing CodeGenome."""
 
+    BINDINGS = [
+        ("ctrl+q", "quit_app", "Quit"),
+        ("ctrl+c", "quit_app", "Quit"),
+    ]
+
     CSS = """
     Screen {
         layout: vertical;
@@ -257,8 +262,6 @@ class CodeGenomeTUI(App):
                     with Horizontal(classes="command-row"):
                         yield Button("Live Evolve (Local)", id="btn-evolve-local", variant="success")
                         yield Button("Live Evolve (LAN)", id="btn-evolve-lan", variant="success")
-                        yield Button("Stop Active Processes", id="btn-stop", variant="error")
-                        yield Button("Quit", id="btn-quit-main", variant="default")
 
                 with Container(id="log-container"):
                     with TabbedContent(initial="tab-analyze"):
@@ -275,10 +278,15 @@ class CodeGenomeTUI(App):
                             with Vertical(classes="log-pane"):
                                 yield RichLog(id="log-general", markup=True, highlight=True)
 
+                with Horizontal(classes="page-actions"):
+                    yield Button("Stop Active Processes", id="btn-stop", variant="error")
+                    yield Button("Quit", id="btn-quit-main", variant="default")
+
         yield Footer()
 
     def on_mount(self) -> None:
         """Called when app starts. Initializes widgets and state."""
+        self._workspace_poll_timer = None
         self.pages = self.query_one(ContentSwitcher)
         self.workspace_input = self.query_one("#workspace-input", Input)
         self.workspace_scan_status = self.query_one("#workspace-scan-status", Static)
@@ -385,6 +393,25 @@ class CodeGenomeTUI(App):
         self._pending_workspace_info = info
         self.update_workspace_scan_panels(info)
 
+    def background_refresh_workspace_info(self) -> None:
+        """Periodically refresh workspace counts in the background."""
+        if getattr(self, "_workspace_path", None) and getattr(self, "pages", None) and self.pages.current == PAGE_MAIN:
+            self.run_worker(
+                self._do_background_refresh(self._workspace_path),
+                exclusive=True,
+                group="workspace-info-bg",
+            )
+
+    async def _do_background_refresh(self, path: str) -> None:
+        """Fetch updated info without blocking or changing UI state heavily."""
+        worker = get_current_worker()
+        info = await asyncio.to_thread(collect_workspace_info, Path(path))
+        if worker.is_cancelled:
+            return
+        
+        # Only update the summary bar to avoid flashing the UI
+        self.workspace_summary.update(format_workspace_summary(info))
+
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         """Re-enable controls and surface workspace scan failures."""
         if event.worker.group != "workspace-info":
@@ -413,6 +440,9 @@ class CodeGenomeTUI(App):
         self._workspace_path = info.root
         self.workspace_summary.update(format_workspace_summary(info))
         self.show_page(PAGE_MAIN)
+
+        if getattr(self, "_workspace_poll_timer", None) is None:
+            self._workspace_poll_timer = self.set_interval(5.0, self.background_refresh_workspace_info)
 
         if not self._main_initialized:
             self._main_initialized = True
@@ -681,6 +711,10 @@ class CodeGenomeTUI(App):
                 await asyncio.shield(self._close_subprocess(process))
         self._subprocesses.clear()
         self.active_processes.clear()
+
+    def action_quit_app(self) -> None:
+        """Handle quit action from bindings."""
+        self.quit_app()
 
     def quit_app(self) -> None:
         """Stop running subprocesses and exit the TUI."""
