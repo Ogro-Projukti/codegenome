@@ -473,7 +473,7 @@ class CodeGenomeTUI(App):
             )
         elif button_id == "btn-mcp":
             self.run_command(
-                ["codegenome", "mcp-start", "--path", workspace],
+                ["codegenome", "mcp-start", "--path", workspace, "--transport", "http", "--port", "7331"],
                 channel="mcp",
                 is_background=True,
             )

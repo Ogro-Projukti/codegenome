@@ -92,11 +92,25 @@ def export(export_format: str, path: str):
     type=click.Path(exists=True, file_okay=False),
     help="Workspace path for the MCP server."
 )
-def mcp_start(path: str):
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "http"], case_sensitive=False),
+    default="stdio",
+    help="Transport protocol (stdio or http)."
+)
+@click.option(
+    "--port",
+    type=int,
+    default=7331,
+    help="Port to bind to when using HTTP transport."
+)
+def mcp_start(path: str, transport: str, port: int):
     """Initializes and starts the MCP server so external LLMs can connect.
 
     Args:
         path (str): The workspace directory path for the MCP server.
+        transport (str): Transport protocol (stdio or http).
+        port (int): Port to bind to when using HTTP transport.
     """
     workspace = Path(path).resolve()
     config = WatcherConfig(workspace=workspace)
@@ -104,10 +118,13 @@ def mcp_start(path: str):
     db_path = engine.db_path
     engine.close()  # Close the engine since the MCP server process will open its own connection
     
-    click.echo(f"Starting MCP server for workspace {workspace} (DB: {db_path})...")
+    click.echo(f"Starting MCP server for workspace {workspace} (DB: {db_path}) via {transport}...")
     
     from codegenome.mcp_server import main as mcp_main
-    sys.exit(mcp_main(["--db-path", str(db_path), "--transport", "stdio"]))
+    args = ["--db-path", str(db_path), "--transport", transport.lower()]
+    if transport.lower() == "http":
+        args.extend(["--port", str(port)])
+    sys.exit(mcp_main(args))
 
 @cli.command()
 @click.option("--live", is_flag=True, help="Enable WebSocket real-time broadcast.")
