@@ -137,6 +137,49 @@ def test_graph_service_get_timeline_from_worker_thread(sample_db: Path) -> None:
         service.shutdown()
 
 
+def test_graph_service_refreshes_latest_snapshot_before_tool_reads(sample_db: Path) -> None:
+    config = ServerConfig(
+        host="127.0.0.1",
+        port=7331,
+        db_path=sample_db,
+        timeout_seconds=5.0,
+        log_level="INFO",
+        transport="http",
+    )
+    service = GraphService(config)
+    service.startup()
+    try:
+        updated_graph = create_graph("igraph")
+        updated_graph.add_node(
+            "file:alpha.py",
+            node_type="file",
+            file_path="alpha.py",
+            churn=2,
+            complexity=1,
+        )
+        updated_graph.add_node(
+            "file:beta.py",
+            node_type="file",
+            file_path="beta.py",
+            churn=1,
+            complexity=1,
+        )
+        timeline = GraphTimeline(sample_db)
+        try:
+            latest_snapshot_id = timeline.record_snapshot(updated_graph, label="updated")
+        finally:
+            timeline.close()
+
+        graph = service.run(service.store.get_graph)
+
+        assert graph["snapshot_id"] == latest_snapshot_id
+        assert graph["latest_snapshot_id"] == latest_snapshot_id
+        assert graph["current"] is True
+        assert graph["node_count"] == 2
+    finally:
+        service.shutdown()
+
+
 def test_create_server_registers_tools(sample_db: Path) -> None:
     config = ServerConfig(
         host="127.0.0.1",

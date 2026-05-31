@@ -229,6 +229,7 @@ class GraphService:
 
     def _invoke(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         with self._lock:
+            self._store.refresh_latest()
             return fn(*args, **kwargs)
 
     def run(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -457,13 +458,15 @@ def create_server(
 
     @mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
     async def health(_request: Request) -> JSONResponse:
-        summary = service.store.summary()
+        summary = service.run(service.store.summary)
         payload = {
             "status": "ok",
             "service": "watcher-mcp",
             "version": __version__,
             "db_path": str(service.config.db_path),
             "snapshot_id": summary.snapshot_id,
+            "latest_snapshot_id": summary.latest_snapshot_id,
+            "current": summary.current,
             "node_count": summary.node_count,
             "edge_count": summary.edge_count,
             "empty": summary.empty,
@@ -547,9 +550,15 @@ def create_server(
 
     @mcp.tool
     @guarded_tool
-    def get_dead_code() -> dict[str, Any]:
+    def get_dead_code(
+        include_generated: bool = False,
+        include_public_api: bool = False,
+    ) -> dict[str, Any]:
         """Detect likely dead code symbols."""
-        return service.store.get_dead_code()
+        return service.store.get_dead_code(
+            include_generated=include_generated,
+            include_public_api=include_public_api,
+        )
 
     @mcp.tool
     @guarded_tool
@@ -559,9 +568,9 @@ def create_server(
 
     @mcp.tool
     @guarded_tool
-    def get_god_nodes() -> dict[str, Any]:
+    def get_god_nodes(include_generated: bool = False) -> dict[str, Any]:
         """Return highly connected god nodes."""
-        return service.store.get_god_nodes()
+        return service.store.get_god_nodes(include_generated=include_generated)
 
     @mcp.tool
     @guarded_tool
@@ -571,9 +580,15 @@ def create_server(
 
     @mcp.tool
     @guarded_tool
-    def get_complexity(limit: int = 25) -> dict[str, Any]:
+    def get_complexity(
+        limit: int = 25,
+        include_generated: bool = False,
+    ) -> dict[str, Any]:
         """Return top complexity-ranked symbols."""
-        return service.store.get_complexity(limit=limit)
+        return service.store.get_complexity(
+            limit=limit,
+            include_generated=include_generated,
+        )
 
     @mcp.tool
     @guarded_tool
