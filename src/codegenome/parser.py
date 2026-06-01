@@ -242,8 +242,11 @@ class SourceParser:
         self._languages = _load_languages()
         self._parsers: dict[str, Parser] = {}
         for key, language in self._languages.items():
-            parser = Parser()
-            parser.set_language(language)
+            try:
+                parser = Parser(language)
+            except TypeError:
+                parser = Parser()
+                parser.set_language(language)
             self._parsers[key] = parser
 
     def detect_language(self, path: Path | str) -> str | None:
