@@ -9,8 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from textual import events
+from textual.actions import SkipAction
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
+from textual.selection import Selection
 from textual.widgets import Button, ContentSwitcher, Footer, Header, Input, Label, RichLog, Static, TabbedContent, TabPane
 from textual.worker import Worker, WorkerState, get_current_worker
 
@@ -38,12 +41,38 @@ class ActiveProcess:
     channel: LogChannel
 
 
+class ReadOnlyRichLog(RichLog):
+    """Console log output: selectable/copyable, not keyboard-editable."""
+
+    ALLOW_SELECT = True
+
+    def get_selection(self, selection: Selection) -> tuple[str, str] | None:
+        """Return plain text for the selected region."""
+        if not self.lines:
+            return None
+        text = "\n".join(line.text for line in self.lines)
+        extracted = selection.extract(text)
+        if not extracted:
+            return None
+        return extracted, "\n"
+
+    def selection_updated(self, selection: Selection | None) -> None:
+        self._line_cache.clear()
+        self.refresh()
+
+    def on_key(self, event: events.Key) -> None:
+        """Ignore printable keys so log panes cannot be edited."""
+        if event.character and event.character.isprintable():
+            event.prevent_default()
+            event.stop()
+
+
 class CodeGenomeTUI(App):
     """A Textual app for managing CodeGenome."""
 
     BINDINGS = [
         ("ctrl+q", "quit_app", "Quit"),
-        ("ctrl+c", "quit_app", "Quit"),
+        ("ctrl+c", "copy_log_text", "Copy"),
     ]
 
     CSS = """
@@ -116,7 +145,7 @@ class CodeGenomeTUI(App):
         margin-bottom: 1;
     }
 
-    .info-panel RichLog {
+    .info-panel ReadOnlyRichLog {
         height: 1fr;
         min-height: 6;
     }
@@ -170,25 +199,25 @@ class CodeGenomeTUI(App):
         layout: vertical;
     }
 
-    .log-pane RichLog {
+    .log-pane ReadOnlyRichLog {
         height: 1fr;
         width: 1fr;
         border: solid $surface-lighten-1;
     }
 
-    #tab-analyze RichLog {
+    #tab-analyze ReadOnlyRichLog {
         border: solid cyan;
     }
 
-    #tab-mcp RichLog {
+    #tab-mcp ReadOnlyRichLog {
         border: solid green;
     }
 
-    #tab-evolve RichLog {
+    #tab-evolve ReadOnlyRichLog {
         border: solid magenta;
     }
 
-    #tab-general RichLog {
+    #tab-general ReadOnlyRichLog {
         border: solid white;
     }
     """
@@ -239,13 +268,13 @@ class CodeGenomeTUI(App):
                 with Horizontal(id="workspace-info-panels"):
                     with Vertical(classes="info-panel"):
                         yield Label("[bold cyan]Tracked Folders[/bold cyan]")
-                        yield RichLog(id="info-folders", markup=True, highlight=False, wrap=True)
+                        yield ReadOnlyRichLog(id="info-folders", markup=True, highlight=False, wrap=True)
                     with Vertical(classes="info-panel"):
                         yield Label("[bold cyan]File Extensions[/bold cyan]")
-                        yield RichLog(id="info-extensions", markup=True, highlight=False, wrap=True)
+                        yield ReadOnlyRichLog(id="info-extensions", markup=True, highlight=False, wrap=True)
                     with Vertical(classes="info-panel"):
                         yield Label("[bold cyan].gitignore Files[/bold cyan]")
-                        yield RichLog(id="info-gitignore", markup=True, highlight=False, wrap=True)
+                        yield ReadOnlyRichLog(id="info-gitignore", markup=True, highlight=False, wrap=True)
                 with Horizontal(classes="page-actions"):
                     yield Button("Back", id="btn-back-to-set", variant="default")
                     yield Button("Continue", id="btn-continue", variant="primary", disabled=True)
@@ -270,16 +299,16 @@ class CodeGenomeTUI(App):
                     with TabbedContent(initial="tab-analyze"):
                         with TabPane("Analyze", id="tab-analyze"):
                             with Vertical(classes="log-pane"):
-                                yield RichLog(id="log-analyze", markup=True, highlight=True)
+                                yield ReadOnlyRichLog(id="log-analyze", markup=True, highlight=True)
                         with TabPane("MCP Server", id="tab-mcp"):
                             with Vertical(classes="log-pane"):
-                                yield RichLog(id="log-mcp", markup=True, highlight=True)
+                                yield ReadOnlyRichLog(id="log-mcp", markup=True, highlight=True)
                         with TabPane("Live Evolve", id="tab-evolve"):
                             with Vertical(classes="log-pane"):
-                                yield RichLog(id="log-evolve", markup=True, highlight=True)
+                                yield ReadOnlyRichLog(id="log-evolve", markup=True, highlight=True)
                         with TabPane("General", id="tab-general"):
                             with Vertical(classes="log-pane"):
-                                yield RichLog(id="log-general", markup=True, highlight=True)
+                                yield ReadOnlyRichLog(id="log-general", markup=True, highlight=True)
 
                 with Horizontal(classes="page-actions"):
                     yield Button("Stop MCP Server", id="btn-stop-mcp", variant="error")
@@ -294,15 +323,15 @@ class CodeGenomeTUI(App):
         self.pages = self.query_one(ContentSwitcher)
         self.workspace_input = self.query_one("#workspace-input", Input)
         self.workspace_scan_status = self.query_one("#workspace-scan-status", Static)
-        self.info_folders_log = self.query_one("#info-folders", RichLog)
-        self.info_extensions_log = self.query_one("#info-extensions", RichLog)
-        self.info_gitignore_log = self.query_one("#info-gitignore", RichLog)
+        self.info_folders_log = self.query_one("#info-folders", ReadOnlyRichLog)
+        self.info_extensions_log = self.query_one("#info-extensions", ReadOnlyRichLog)
+        self.info_gitignore_log = self.query_one("#info-gitignore", ReadOnlyRichLog)
         self.workspace_summary = self.query_one("#workspace-summary", Static)
         self.continue_button = self.query_one("#btn-continue", Button)
         self.set_workspace_button = self.query_one("#btn-set-workspace", Button)
         self.log_tabs = self.query_one(TabbedContent)
-        self.log_widgets: dict[LogChannel, RichLog] = {
-            channel: self.query_one(f"#{log_id}", RichLog)
+        self.log_widgets: dict[LogChannel, ReadOnlyRichLog] = {
+            channel: self.query_one(f"#{log_id}", ReadOnlyRichLog)
             for channel, log_id in self.LOG_IDS.items()
         }
         self.command_buttons: dict[str, Button] = {
@@ -757,6 +786,16 @@ class CodeGenomeTUI(App):
                 await asyncio.shield(self._close_subprocess(process))
         self._subprocesses.clear()
         self.active_processes.clear()
+
+    def action_copy_log_text(self) -> None:
+        """Copy selected log text to the clipboard."""
+        try:
+            self.screen.action_copy_text()
+        except SkipAction:
+            self.notify(
+                "Select text in a log panel first, then press Ctrl+C.",
+                severity="warning",
+            )
 
     def action_quit_app(self) -> None:
         """Handle quit action from bindings."""

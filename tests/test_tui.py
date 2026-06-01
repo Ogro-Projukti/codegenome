@@ -4,7 +4,41 @@ from __future__ import annotations
 
 import asyncio
 
-from codegenome.tui import ActiveProcess, CodeGenomeTUI
+from rich.segment import Segment
+
+from textual import events
+from textual.geometry import Offset
+from textual.selection import Selection
+from textual.strip import Strip
+
+from codegenome.tui import ActiveProcess, CodeGenomeTUI, ReadOnlyRichLog
+
+
+def test_bindings_use_ctrl_c_for_copy_not_quit() -> None:
+    binding_map = {key: action for key, action, _description in CodeGenomeTUI.BINDINGS}
+    assert binding_map["ctrl+c"] == "copy_log_text"
+    assert binding_map["ctrl+q"] == "quit_app"
+
+
+def test_read_only_rich_log_get_selection_returns_plain_text() -> None:
+    log = ReadOnlyRichLog()
+    log.lines = [
+        Strip([Segment("alpha")], 5),
+        Strip([Segment("beta")], 4),
+    ]
+    selection = Selection(Offset(0, 0), Offset(4, 1))
+    result = log.get_selection(selection)
+    assert result is not None
+    text, ending = result
+    assert text == "alpha\nbeta"
+    assert ending == "\n"
+
+
+def test_read_only_rich_log_blocks_printable_keys() -> None:
+    log = ReadOnlyRichLog()
+    event = events.Key(key="x", character="x")
+    log.on_key(event)
+    assert event._stop_propagation is True
 
 
 def test_command_button_ids_include_channel_specific_stop_buttons() -> None:
