@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Copyable TUI console outputs** — users can now select text in the log panes and press `Ctrl+C` to copy it to the clipboard.
 - **LAN live graph sharing** — `codegenome evolve --live --lan` binds HTTP and WebSocket to `0.0.0.0` so other devices on the same network can open the live graph. The CLI prints a shareable LAN URL (for example `http://192.168.1.42:8000/graph.html?live=1`).
 - **TUI MCP HTTP mode controls** — the dashboard now includes separate **Start MCP HTTP (Local)** and **Start MCP HTTP (LAN)** buttons so users can intentionally choose localhost-only or LAN exposure.
 - **Git-aware file filtering** — the scanner respects workspace `.gitignore` and `.genomeignore` files, including nested ignore files in subdirectories, negation rules (`!pattern`), and anchored patterns.
@@ -33,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Agent rules no longer reference misleading HTTP endpoints that caused agents to `curl` the server instead of using MCP transport.
 - MCP server keeps localhost-only behavior by default and now requires an explicit remote HTTP opt-in (`--allow-remote-http`) for non-loopback hosts.
 - Release lint blockers (unused imports and test lint violations) were resolved so full lint/test/build gates pass before upload.
-- Tree-sitter dependency constraints now support Python 3.12+ installations (including macOS Apple Silicon) while preserving legacy pins for Python 3.11 compatibility.
+- Tree-sitter dependency constraints now support Python 3.12+ installations (including macOS Apple Silicon) while preserving legacy pins for Python 3.11 compatibility (fixes [#1](https://github.com/Ogro-Projukti/codegenome/issues/1)).
+- Updated tree-sitter `Parser` initialization to support both legacy and modern (`>=0.23`) API signatures without breaking runtime.
 
 ### Documentation
 
