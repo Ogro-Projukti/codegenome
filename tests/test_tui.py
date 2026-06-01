@@ -4,7 +4,41 @@ from __future__ import annotations
 
 import asyncio
 
-from codegenome.tui import ActiveProcess, CodeGenomeTUI
+from rich.segment import Segment
+
+from textual import events
+from textual.geometry import Offset
+from textual.selection import Selection
+from textual.strip import Strip
+
+from codegenome.tui import ActiveProcess, CodeGenomeTUI, ReadOnlyRichLog
+
+
+def test_bindings_use_ctrl_c_for_copy_not_quit() -> None:
+    binding_map = {key: action for key, action, _description in CodeGenomeTUI.BINDINGS}
+    assert binding_map["ctrl+c"] == "copy_log_text"
+    assert binding_map["ctrl+q"] == "quit_app"
+
+
+def test_read_only_rich_log_get_selection_returns_plain_text() -> None:
+    log = ReadOnlyRichLog()
+    log.lines = [
+        Strip([Segment("alpha")], 5),
+        Strip([Segment("beta")], 4),
+    ]
+    selection = Selection(Offset(0, 0), Offset(4, 1))
+    result = log.get_selection(selection)
+    assert result is not None
+    text, ending = result
+    assert text == "alpha\nbeta"
+    assert ending == "\n"
+
+
+def test_read_only_rich_log_blocks_printable_keys() -> None:
+    log = ReadOnlyRichLog()
+    event = events.Key(key="x", character="x")
+    log.on_key(event)
+    assert event._stop_propagation is True
 
 
 def test_command_button_ids_include_channel_specific_stop_buttons() -> None:
@@ -63,3 +97,52 @@ def test_stop_processes_for_channel_logs_when_no_matching_processes() -> None:
 
     assert logs == [("mcp", "[yellow]No active MCP server process to stop.[/yellow]")]
     assert focused == ["mcp"]
+
+
+def test_copy_panel_output_copies_text_to_clipboard() -> None:
+    app = CodeGenomeTUI()
+    log = ReadOnlyRichLog()
+    log.lines = [
+        Strip([Segment("line 1")], 6),
+        Strip([Segment("line 2")], 6),
+    ]
+
+    copied: list[str] = []
+    notifications: list[str] = []
+
+    def fake_copy_to_clipboard(text: str) -> None:
+        copied.append(text)
+
+    def fake_notify(message: str, *, severity: str = "information") -> None:
+        notifications.append(message)
+
+    app.copy_to_clipboard = fake_copy_to_clipboard  # type: ignore[method-assign]
+    app.notify = fake_notify  # type: ignore[method-assign]
+
+    app.copy_panel_output(log, "Test Panel")
+
+    assert copied == ["line 1\nline 2"]
+    assert notifications == ["Copied Test Panel output to clipboard!"]
+
+
+def test_copy_panel_output_notifies_if_empty() -> None:
+    app = CodeGenomeTUI()
+    log = ReadOnlyRichLog()
+    log.lines = []
+
+    copied: list[str] = []
+    notifications: list[str] = []
+
+    def fake_copy_to_clipboard(text: str) -> None:
+        copied.append(text)
+
+    def fake_notify(message: str, *, severity: str = "information") -> None:
+        notifications.append(message)
+
+    app.copy_to_clipboard = fake_copy_to_clipboard  # type: ignore[method-assign]
+    app.notify = fake_notify  # type: ignore[method-assign]
+
+    app.copy_panel_output(log, "Test Panel")
+
+    assert not copied
+    assert notifications == ["No content to copy in Test Panel."]
