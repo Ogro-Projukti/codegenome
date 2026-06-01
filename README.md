@@ -82,6 +82,9 @@ codegenome export --format obsidian --path .
 
 # Run in watch mode with live graph web UI
 codegenome evolve --live .
+
+# Share the live graph with other devices on your LAN (v0.1.4+)
+codegenome evolve --live --lan .
 ```
 
 > **Note**: For detailed CLI reference, installation guides, and MCP setup, see our comprehensive [Documentation](#-documentation).

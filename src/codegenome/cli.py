@@ -23,9 +23,12 @@ def analyze(path: str):
     workspace = Path(path).resolve()
     config = WatcherConfig(workspace=workspace, export_formats=("json",))
     engine = WatcherEngine(config)
+
+    def on_progress(message: str) -> None:
+        click.echo(message)
     
     try:
-        result = engine.build(full=False)
+        result = engine.build(full=False, on_progress=on_progress)
         click.echo(f"Build complete: {result.graph.number_of_nodes()} nodes, {result.graph.number_of_edges()} edges.")
     except Exception as e:
         click.echo(f"Error during analysis: {e}", err=True)
@@ -89,11 +92,31 @@ def export(export_format: str, path: str):
     type=click.Path(exists=True, file_okay=False),
     help="Workspace path for the MCP server."
 )
-def mcp_start(path: str):
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "http"], case_sensitive=False),
+    default="stdio",
+    help="Transport protocol (stdio or http)."
+)
+@click.option(
+    "--port",
+    type=int,
+    default=7331,
+    help="Port to bind to when using HTTP transport."
+)
+@click.option(
+    "--lan",
+    is_flag=True,
+    help="Allow HTTP transport to bind on LAN (0.0.0.0) instead of localhost.",
+)
+def mcp_start(path: str, transport: str, port: int, lan: bool):
     """Initializes and starts the MCP server so external LLMs can connect.
 
     Args:
         path (str): The workspace directory path for the MCP server.
+        transport (str): Transport protocol (stdio or http).
+        port (int): Port to bind to when using HTTP transport.
+        lan (bool): Whether to expose HTTP transport on the local network.
     """
     workspace = Path(path).resolve()
     config = WatcherConfig(workspace=workspace)
@@ -101,27 +124,41 @@ def mcp_start(path: str):
     db_path = engine.db_path
     engine.close()  # Close the engine since the MCP server process will open its own connection
     
-    click.echo(f"Starting MCP server for workspace {workspace} (DB: {db_path})...")
+    click.echo(f"Starting MCP server for workspace {workspace} (DB: {db_path}) via {transport}...", err=True)
     
     from codegenome.mcp_server import main as mcp_main
-    sys.exit(mcp_main(["--db-path", str(db_path), "--transport", "stdio"]))
+    args = ["--db-path", str(db_path), "--transport", transport.lower()]
+    if transport.lower() == "http":
+        host = "0.0.0.0" if lan else "127.0.0.1"
+        args.extend(["--host", host])
+        args.extend(["--port", str(port)])
+        if lan:
+            args.append("--allow-remote-http")
+    sys.exit(mcp_main(args))
 
 @cli.command()
 @click.option("--live", is_flag=True, help="Enable WebSocket real-time broadcast.")
+@click.option(
+    "--lan",
+    is_flag=True,
+    help="Expose HTTP and WebSocket on the local network (0.0.0.0).",
+)
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
-def evolve(path: str, live: bool):
+def evolve(path: str, live: bool, lan: bool):
     """Start real-time architectural observer and open live UI.
 
     Args:
         path (str): The workspace directory path to observe.
         live (bool): Whether to enable WebSocket real-time broadcast.
+        lan (bool): Whether to bind services for LAN access.
     """
     import time
     import threading
     import webbrowser
     from http.server import SimpleHTTPRequestHandler
-    from socketserver import TCPServer
+    from socketserver import ThreadingTCPServer
     from watchdog.observers import Observer
+    from codegenome.ai_chat import AIChatError, chat_completion, load_models, settings_payload
     from codegenome.watcher import WatcherConfig, WatcherEngine, SurgicalUpdateHandler
 
     workspace = Path(path).resolve()
@@ -131,29 +168,120 @@ def evolve(path: str, live: bool):
     click.echo(f"Running initial build for {workspace}...")
     engine.build(full=False)
     
+    from codegenome.network_utils import get_lan_ip
+
+    http_port = 8000
+    ws_port = 8765
+    bind_host = "0.0.0.0" if lan else "127.0.0.1"
+    lan_ip = get_lan_ip() if lan else "127.0.0.1"
+
     live_server = None
     if live:
         from codegenome.live_server import LiveGraphServer
-        live_server = LiveGraphServer(host="127.0.0.1", port=8765)
+        live_server = LiveGraphServer(host=bind_host, port=ws_port)
         live_server.start_background()
-        click.echo("WebSocket server initialized on ws://127.0.0.1:8765")
-    
+        if lan:
+            click.echo(f"WebSocket server listening on ws://0.0.0.0:{ws_port}")
+            click.echo(f"  LAN clients connect to ws://{lan_ip}:{ws_port}")
+        else:
+            click.echo(f"WebSocket server initialized on ws://127.0.0.1:{ws_port}")
+
     def serve_forever():
-        import os
-        os.chdir(engine.export_dir)
-        # Suppress logging in SimpleHTTPRequestHandler to keep terminal clean
+        import json
+
         class QuietHandler(SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=str(engine.export_dir), **kwargs)
+
             def log_message(self, format, *args):
                 pass
-        with TCPServer(("", 8000), QuietHandler) as httpd:
+
+            def do_GET(self):
+                if self.path == "/ai/settings":
+                    self._send_json(settings_payload(engine.genome_dir))
+                    return
+                super().do_GET()
+
+            def do_POST(self):
+                if self.path == "/ai/models":
+                    self._handle_models()
+                    return
+                if self.path == "/ai/chat":
+                    self._handle_chat()
+                    return
+                self.send_error(404, "Unknown AI endpoint")
+
+            def _handle_models(self):
+                try:
+                    payload = self._read_json_body()
+                    models = load_models(
+                        engine.genome_dir,
+                        str(payload.get("provider", "")),
+                        _optional_string(payload.get("api_key")),
+                        save_api_key=bool(payload.get("save_api_key")),
+                    )
+                    self._send_json({"models": models})
+                except AIChatError as exc:
+                    self._send_json({"error": str(exc)}, status=400)
+                except Exception as exc:  # noqa: BLE001 - keep live server responsive
+                    self._send_json({"error": f"AI model loading failed: {exc}"}, status=500)
+
+            def _handle_chat(self):
+                try:
+                    payload = self._read_json_body()
+                    answer = chat_completion(
+                        engine.genome_dir,
+                        engine.graph_json_path,
+                        str(payload.get("provider", "")),
+                        str(payload.get("model", "")),
+                        payload.get("messages", []),
+                        _optional_string(payload.get("api_key")),
+                        _optional_string(payload.get("selected_node_id")),
+                        _optional_string(payload.get("context_size")),
+                        save_api_key=bool(payload.get("save_api_key")),
+                    )
+                    self._send_json({"message": answer})
+                except AIChatError as exc:
+                    self._send_json({"error": str(exc)}, status=400)
+                except Exception as exc:  # noqa: BLE001 - keep live server responsive
+                    self._send_json({"error": f"AI chat failed: {exc}"}, status=500)
+
+            def _read_json_body(self):
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                raw = self.rfile.read(length) if length else b"{}"
+                return json.loads(raw.decode("utf-8"))
+
+            def _send_json(self, payload, status=200):
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+
+        def _optional_string(value):
+            if value is None:
+                return None
+            text = str(value).strip()
+            return text or None
+
+        with ThreadingTCPServer((bind_host if lan else "", http_port), QuietHandler) as httpd:
             httpd.serve_forever()
-            
+
     server_thread = threading.Thread(target=serve_forever, daemon=True)
     server_thread.start()
-    
-    url = "http://localhost:8000/graph.html?live=1"
-    click.echo(f"HTTP Server started. Opening live graph UI at {url}...")
-    webbrowser.open(url)
+
+    live_query = "?live=1"
+    local_url = f"http://localhost:{http_port}/graph.html{live_query}"
+    if lan:
+        lan_url = f"http://{lan_ip}:{http_port}/graph.html{live_query}"
+        click.echo(f"HTTP server listening on http://0.0.0.0:{http_port}")
+        click.echo(f"  Open locally:  {local_url}")
+        click.echo(f"  Share on LAN:  {lan_url}")
+    else:
+        click.echo(f"HTTP Server started. Opening live graph UI at {local_url}...")
+    webbrowser.open(local_url)
     
     click.echo("Watching for .py file changes (Press Ctrl+C to stop)...")
     observer = Observer()
@@ -203,7 +331,6 @@ def rules(client: tuple[str], port: int, dry_run: bool, path: str):
         path (str): The workspace directory path.
     """
     from codegenome.rules import generate_rules
-    import os
     
     workspace = Path(path).resolve()
     
