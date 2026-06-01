@@ -14,7 +14,18 @@ from textual.actions import SkipAction
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.selection import Selection
-from textual.widgets import Button, ContentSwitcher, Footer, Header, Input, Label, RichLog, Static, TabbedContent, TabPane
+from textual.widgets import (
+    Button,
+    ContentSwitcher,
+    Footer,
+    Header,
+    Input,
+    Label,
+    RichLog,
+    Static,
+    TabbedContent,
+    TabPane,
+)
 from textual.worker import Worker, WorkerState, get_current_worker
 
 from codegenome.workspace_info import (
@@ -69,6 +80,11 @@ class ReadOnlyRichLog(RichLog):
 
 class CodeGenomeTUI(App):
     """A Textual app for managing CodeGenome."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._subprocesses: set[asyncio.subprocess.Process] = set()
+        self.active_processes: list[ActiveProcess] = []
 
     BINDINGS = [
         ("ctrl+q", "quit_app", "Quit"),
@@ -220,6 +236,36 @@ class CodeGenomeTUI(App):
     #tab-general ReadOnlyRichLog {
         border: solid white;
     }
+
+    .panel-header {
+        height: 1;
+        layout: horizontal;
+        align: left middle;
+        margin-bottom: 1;
+    }
+
+    .panel-header Label {
+        width: 1fr;
+        margin: 0;
+        padding: 0;
+        height: auto;
+    }
+
+    .copy-btn {
+        height: 1;
+        min-width: 8;
+        border: none;
+        padding: 0 1;
+        margin: 0;
+        background: $surface-lighten-1;
+        color: $text;
+        text-style: bold;
+    }
+
+    .copy-btn:hover {
+        background: $primary;
+        color: $text;
+    }
     """
 
     LOG_IDS: dict[LogChannel, str] = {
@@ -257,7 +303,9 @@ class CodeGenomeTUI(App):
                 with Vertical(classes="set-workspace-panel"):
                     yield Label("[bold]Set Workspace[/bold]")
                     yield Label("Enter the path to your project root:")
-                    yield Input(value=".", id="workspace-input", placeholder="Enter path to workspace...")
+                    yield Input(
+                        value=".", id="workspace-input", placeholder="Enter path to workspace..."
+                    )
                     with Horizontal(classes="page-actions"):
                         yield Button("Set", id="btn-set-workspace", variant="primary")
                         yield Button("Quit", id="btn-quit", variant="default")
@@ -267,14 +315,38 @@ class CodeGenomeTUI(App):
                 yield Static(id="workspace-scan-status", markup=True)
                 with Horizontal(id="workspace-info-panels"):
                     with Vertical(classes="info-panel"):
-                        yield Label("[bold cyan]Tracked Folders[/bold cyan]")
-                        yield ReadOnlyRichLog(id="info-folders", markup=True, highlight=False, wrap=True)
+                        with Horizontal(classes="panel-header"):
+                            yield Label("[bold cyan]Tracked Folders[/bold cyan]")
+                            yield Button(
+                                "Copy", id="btn-copy-folders", variant="default", classes="copy-btn"
+                            )
+                        yield ReadOnlyRichLog(
+                            id="info-folders", markup=True, highlight=False, wrap=True
+                        )
                     with Vertical(classes="info-panel"):
-                        yield Label("[bold cyan]File Extensions[/bold cyan]")
-                        yield ReadOnlyRichLog(id="info-extensions", markup=True, highlight=False, wrap=True)
+                        with Horizontal(classes="panel-header"):
+                            yield Label("[bold cyan]File Extensions[/bold cyan]")
+                            yield Button(
+                                "Copy",
+                                id="btn-copy-extensions",
+                                variant="default",
+                                classes="copy-btn",
+                            )
+                        yield ReadOnlyRichLog(
+                            id="info-extensions", markup=True, highlight=False, wrap=True
+                        )
                     with Vertical(classes="info-panel"):
-                        yield Label("[bold cyan].gitignore Files[/bold cyan]")
-                        yield ReadOnlyRichLog(id="info-gitignore", markup=True, highlight=False, wrap=True)
+                        with Horizontal(classes="panel-header"):
+                            yield Label("[bold cyan].gitignore Files[/bold cyan]")
+                            yield Button(
+                                "Copy",
+                                id="btn-copy-gitignore",
+                                variant="default",
+                                classes="copy-btn",
+                            )
+                        yield ReadOnlyRichLog(
+                            id="info-gitignore", markup=True, highlight=False, wrap=True
+                        )
                 with Horizontal(classes="page-actions"):
                     yield Button("Back", id="btn-back-to-set", variant="default")
                     yield Button("Continue", id="btn-continue", variant="primary", disabled=True)
@@ -289,25 +361,61 @@ class CodeGenomeTUI(App):
                         yield Button("Analyze", id="btn-analyze", variant="primary")
                         yield Button("Export", id="btn-export", variant="primary")
                         yield Button("Generate AI Rules", id="btn-rules", variant="primary")
-                        yield Button("Start MCP HTTP (Local)", id="btn-mcp-local", variant="success")
+                        yield Button(
+                            "Start MCP HTTP (Local)", id="btn-mcp-local", variant="success"
+                        )
                         yield Button("Start MCP HTTP (LAN)", id="btn-mcp-lan", variant="warning")
                     with Horizontal(classes="command-row"):
-                        yield Button("Live Evolve (Local)", id="btn-evolve-local", variant="success")
+                        yield Button(
+                            "Live Evolve (Local)", id="btn-evolve-local", variant="success"
+                        )
                         yield Button("Live Evolve (LAN)", id="btn-evolve-lan", variant="success")
 
                 with Container(id="log-container"):
                     with TabbedContent(initial="tab-analyze"):
                         with TabPane("Analyze", id="tab-analyze"):
                             with Vertical(classes="log-pane"):
+                                with Horizontal(classes="panel-header"):
+                                    yield Label("[bold cyan]Analyze Log[/bold cyan]")
+                                    yield Button(
+                                        "Copy",
+                                        id="btn-copy-analyze",
+                                        variant="default",
+                                        classes="copy-btn",
+                                    )
                                 yield ReadOnlyRichLog(id="log-analyze", markup=True, highlight=True)
                         with TabPane("MCP Server", id="tab-mcp"):
                             with Vertical(classes="log-pane"):
+                                with Horizontal(classes="panel-header"):
+                                    yield Label("[bold cyan]MCP Server Log[/bold cyan]")
+                                    yield Button(
+                                        "Copy",
+                                        id="btn-copy-mcp",
+                                        variant="default",
+                                        classes="copy-btn",
+                                    )
                                 yield ReadOnlyRichLog(id="log-mcp", markup=True, highlight=True)
                         with TabPane("Live Evolve", id="tab-evolve"):
                             with Vertical(classes="log-pane"):
+                                with Horizontal(classes="panel-header"):
+                                    yield Label("[bold cyan]Live Evolve Log[/bold cyan]")
+                                    yield Button(
+                                        "Copy",
+                                        id="btn-copy-evolve",
+                                        variant="default",
+                                        classes="copy-btn",
+                                    )
                                 yield ReadOnlyRichLog(id="log-evolve", markup=True, highlight=True)
                         with TabPane("General", id="tab-general"):
                             with Vertical(classes="log-pane"):
+                                with Horizontal(classes="panel-header"):
+                                    yield Label("[bold cyan]General Log[/bold cyan]")
+                                    yield Button(
+                                        "Copy",
+                                        id="btn-copy-general",
+                                        variant="default",
+                                        classes="copy-btn",
+                                    )
                                 yield ReadOnlyRichLog(id="log-general", markup=True, highlight=True)
 
                 with Horizontal(classes="page-actions"):
@@ -338,8 +446,6 @@ class CodeGenomeTUI(App):
             button_id: self.query_one(f"#{button_id}", Button)
             for button_id in self.COMMAND_BUTTON_IDS
         }
-        self.active_processes: list[ActiveProcess] = []
-        self._subprocesses: set[asyncio.subprocess.Process] = set()
         self._workspace_path: str | None = None
         self._pending_workspace_info: WorkspaceInfo | None = None
         self._main_initialized = False
@@ -377,8 +483,7 @@ class CodeGenomeTUI(App):
         """Populate the three scan result panels from workspace info."""
         if info.error:
             self.workspace_scan_status.update(
-                f"[bold]Root:[/bold] {info.root}  "
-                f"[bold red]Error:[/bold red] {info.error}"
+                f"[bold]Root:[/bold] {info.root}  [bold red]Error:[/bold red] {info.error}"
             )
         else:
             dir_count = len(info.tracked_directories)
@@ -428,7 +533,11 @@ class CodeGenomeTUI(App):
 
     def background_refresh_workspace_info(self) -> None:
         """Periodically refresh workspace counts in the background."""
-        if getattr(self, "_workspace_path", None) and getattr(self, "pages", None) and self.pages.current == PAGE_MAIN:
+        if (
+            getattr(self, "_workspace_path", None)
+            and getattr(self, "pages", None)
+            and self.pages.current == PAGE_MAIN
+        ):
             self.run_worker(
                 self._do_background_refresh(self._workspace_path),
                 exclusive=True,
@@ -441,7 +550,7 @@ class CodeGenomeTUI(App):
         info = await asyncio.to_thread(collect_workspace_info, Path(path))
         if worker.is_cancelled:
             return
-        
+
         # Only update the summary bar to avoid flashing the UI
         self.workspace_summary.update(format_workspace_summary(info))
 
@@ -475,7 +584,9 @@ class CodeGenomeTUI(App):
         self.show_page(PAGE_MAIN)
 
         if getattr(self, "_workspace_poll_timer", None) is None:
-            self._workspace_poll_timer = self.set_interval(5.0, self.background_refresh_workspace_info)
+            self._workspace_poll_timer = self.set_interval(
+                5.0, self.background_refresh_workspace_info
+            )
 
         if not self._main_initialized:
             self._main_initialized = True
@@ -495,10 +606,41 @@ class CodeGenomeTUI(App):
         """Switch the visible tab to the given log channel."""
         self.log_tabs.active = self.TAB_IDS[channel]
 
+    def copy_panel_output(self, log_widget: ReadOnlyRichLog, panel_name: str) -> None:
+        """Get the text from a ReadOnlyRichLog and copy it to clipboard."""
+        text = "\n".join(line.text for line in log_widget.lines)
+        if not text:
+            self.notify(f"No content to copy in {panel_name}.", severity="warning")
+            return
+        self.copy_to_clipboard(text)
+        self.notify(f"Copied {panel_name} output to clipboard!")
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle command button presses."""
         button_id = event.button.id
         if button_id in self.COMMAND_BUTTON_IDS and event.button.disabled:
+            return
+
+        if button_id == "btn-copy-folders":
+            self.copy_panel_output(self.info_folders_log, "Tracked Folders")
+            return
+        elif button_id == "btn-copy-extensions":
+            self.copy_panel_output(self.info_extensions_log, "File Extensions")
+            return
+        elif button_id == "btn-copy-gitignore":
+            self.copy_panel_output(self.info_gitignore_log, ".gitignore Files")
+            return
+        elif button_id == "btn-copy-analyze":
+            self.copy_panel_output(self.log_widgets["analyze"], "Analyze Log")
+            return
+        elif button_id == "btn-copy-mcp":
+            self.copy_panel_output(self.log_widgets["mcp"], "MCP Server Log")
+            return
+        elif button_id == "btn-copy-evolve":
+            self.copy_panel_output(self.log_widgets["evolve"], "Live Evolve Log")
+            return
+        elif button_id == "btn-copy-general":
+            self.copy_panel_output(self.log_widgets["general"], "General Log")
             return
 
         if button_id == "btn-set-workspace":
@@ -536,7 +678,16 @@ class CodeGenomeTUI(App):
             )
         elif button_id == "btn-mcp-local":
             self.run_command(
-                ["codegenome", "mcp-start", "--path", workspace, "--transport", "http", "--port", "7331"],
+                [
+                    "codegenome",
+                    "mcp-start",
+                    "--path",
+                    workspace,
+                    "--transport",
+                    "http",
+                    "--port",
+                    "7331",
+                ],
                 channel="mcp",
                 is_background=True,
             )
@@ -781,11 +932,13 @@ class CodeGenomeTUI(App):
 
     async def _cleanup_subprocesses(self) -> None:
         """Close every tracked subprocess and its pipes."""
-        for process in list(self._subprocesses):
-            with suppress(Exception):
-                await asyncio.shield(self._close_subprocess(process))
-        self._subprocesses.clear()
-        self.active_processes.clear()
+        if hasattr(self, "_subprocesses"):
+            for process in list(self._subprocesses):
+                with suppress(Exception):
+                    await asyncio.shield(self._close_subprocess(process))
+            self._subprocesses.clear()
+        if hasattr(self, "active_processes"):
+            self.active_processes.clear()
 
     def action_copy_log_text(self) -> None:
         """Copy selected log text to the clipboard."""
@@ -812,7 +965,7 @@ class CodeGenomeTUI(App):
 
     async def _shutdown_and_exit(self) -> None:
         """Terminate subprocesses, close pipes, then exit cleanly."""
-        if self._subprocesses:
+        if getattr(self, "_subprocesses", None):
             self.write_log("general", "[yellow]Stopping running commands...[/yellow]")
 
         await self._cleanup_subprocesses()

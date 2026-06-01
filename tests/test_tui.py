@@ -97,3 +97,52 @@ def test_stop_processes_for_channel_logs_when_no_matching_processes() -> None:
 
     assert logs == [("mcp", "[yellow]No active MCP server process to stop.[/yellow]")]
     assert focused == ["mcp"]
+
+
+def test_copy_panel_output_copies_text_to_clipboard() -> None:
+    app = CodeGenomeTUI()
+    log = ReadOnlyRichLog()
+    log.lines = [
+        Strip([Segment("line 1")], 6),
+        Strip([Segment("line 2")], 6),
+    ]
+
+    copied: list[str] = []
+    notifications: list[str] = []
+
+    def fake_copy_to_clipboard(text: str) -> None:
+        copied.append(text)
+
+    def fake_notify(message: str, *, severity: str = "information") -> None:
+        notifications.append(message)
+
+    app.copy_to_clipboard = fake_copy_to_clipboard  # type: ignore[method-assign]
+    app.notify = fake_notify  # type: ignore[method-assign]
+
+    app.copy_panel_output(log, "Test Panel")
+
+    assert copied == ["line 1\nline 2"]
+    assert notifications == ["Copied Test Panel output to clipboard!"]
+
+
+def test_copy_panel_output_notifies_if_empty() -> None:
+    app = CodeGenomeTUI()
+    log = ReadOnlyRichLog()
+    log.lines = []
+
+    copied: list[str] = []
+    notifications: list[str] = []
+
+    def fake_copy_to_clipboard(text: str) -> None:
+        copied.append(text)
+
+    def fake_notify(message: str, *, severity: str = "information") -> None:
+        notifications.append(message)
+
+    app.copy_to_clipboard = fake_copy_to_clipboard  # type: ignore[method-assign]
+    app.notify = fake_notify  # type: ignore[method-assign]
+
+    app.copy_panel_output(log, "Test Panel")
+
+    assert not copied
+    assert notifications == ["No content to copy in Test Panel."]
