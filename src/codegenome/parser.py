@@ -307,6 +307,8 @@ class SourceParser:
         try:
             tree = parser.parse(content)
         except Exception as exc:
+            import traceback
+            traceback.print_exc()
             result.errors.append(str(exc))
             logger.warning("Parse failed for %s: %s", path, exc)
             return result
