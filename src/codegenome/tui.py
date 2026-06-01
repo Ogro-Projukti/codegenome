@@ -211,10 +211,12 @@ class CodeGenomeTUI(App):
         "btn-analyze",
         "btn-export",
         "btn-rules",
-        "btn-mcp",
+        "btn-mcp-local",
+        "btn-mcp-lan",
         "btn-evolve-local",
         "btn-evolve-lan",
-        "btn-stop",
+        "btn-stop-mcp",
+        "btn-stop-evolve",
     )
 
     def compose(self) -> ComposeResult:
@@ -258,7 +260,8 @@ class CodeGenomeTUI(App):
                         yield Button("Analyze", id="btn-analyze", variant="primary")
                         yield Button("Export", id="btn-export", variant="primary")
                         yield Button("Generate AI Rules", id="btn-rules", variant="primary")
-                        yield Button("Start MCP", id="btn-mcp", variant="success")
+                        yield Button("Start MCP HTTP (Local)", id="btn-mcp-local", variant="success")
+                        yield Button("Start MCP HTTP (LAN)", id="btn-mcp-lan", variant="warning")
                     with Horizontal(classes="command-row"):
                         yield Button("Live Evolve (Local)", id="btn-evolve-local", variant="success")
                         yield Button("Live Evolve (LAN)", id="btn-evolve-lan", variant="success")
@@ -279,7 +282,8 @@ class CodeGenomeTUI(App):
                                 yield RichLog(id="log-general", markup=True, highlight=True)
 
                 with Horizontal(classes="page-actions"):
-                    yield Button("Stop Active Processes", id="btn-stop", variant="error")
+                    yield Button("Stop MCP Server", id="btn-stop-mcp", variant="error")
+                    yield Button("Stop Live Evolve", id="btn-stop-evolve", variant="error")
                     yield Button("Quit", id="btn-quit-main", variant="default")
 
         yield Footer()
@@ -501,9 +505,25 @@ class CodeGenomeTUI(App):
                 ["codegenome", "rules", "--client", "all", workspace],
                 channel="general",
             )
-        elif button_id == "btn-mcp":
+        elif button_id == "btn-mcp-local":
             self.run_command(
                 ["codegenome", "mcp-start", "--path", workspace, "--transport", "http", "--port", "7331"],
+                channel="mcp",
+                is_background=True,
+            )
+        elif button_id == "btn-mcp-lan":
+            self.run_command(
+                [
+                    "codegenome",
+                    "mcp-start",
+                    "--path",
+                    workspace,
+                    "--transport",
+                    "http",
+                    "--port",
+                    "7331",
+                    "--lan",
+                ],
                 channel="mcp",
                 is_background=True,
             )
@@ -519,8 +539,10 @@ class CodeGenomeTUI(App):
                 channel="evolve",
                 is_background=True,
             )
-        elif button_id == "btn-stop":
-            self.stop_all_processes()
+        elif button_id == "btn-stop-mcp":
+            self.stop_processes_for_channel("mcp", "MCP server")
+        elif button_id == "btn-stop-evolve":
+            self.stop_processes_for_channel("evolve", "Live Evolve")
         elif button_id in ("btn-quit", "btn-quit-main"):
             self.quit_app()
 
@@ -681,16 +703,41 @@ class CodeGenomeTUI(App):
             return
 
         self.run_worker(
-            self._stop_processes(list(self.active_processes)),
+            self._stop_processes(
+                list(self.active_processes),
+                completion_message="[yellow]All background processes stopped.[/yellow]",
+            ),
             exclusive=False,
         )
 
-    async def _stop_processes(self, processes: list[ActiveProcess]) -> None:
+    def stop_processes_for_channel(self, channel: LogChannel, label: str) -> None:
+        """Stop active background processes for a specific log channel."""
+        matching = [active for active in self.active_processes if active.channel == channel]
+        if not matching:
+            self.write_log(channel, f"[yellow]No active {label} process to stop.[/yellow]")
+            self.focus_log_tab(channel)
+            return
+
+        self.run_worker(
+            self._stop_processes(
+                matching,
+                completion_message=f"[yellow]{label} processes stopped.[/yellow]",
+            ),
+            exclusive=False,
+        )
+
+    async def _stop_processes(
+        self,
+        processes: list[ActiveProcess],
+        *,
+        completion_message: str,
+    ) -> None:
         """Async cleanup for background subprocesses."""
         for active in processes:
             try:
                 await self._close_subprocess(active.process)
                 self._untrack_subprocess(active.process)
+                self._remove_active_process(active.process)
                 self.write_log(
                     active.channel,
                     f"[yellow]Terminated process (PID: {active.process.pid})[/yellow]",
@@ -700,8 +747,7 @@ class CodeGenomeTUI(App):
                     active.channel,
                     f"[red]Failed to terminate PID {active.process.pid}: {exc}[/red]",
                 )
-        self.active_processes.clear()
-        self.write_log("general", "[yellow]All background processes stopped.[/yellow]")
+        self.write_log("general", completion_message)
         self.focus_log_tab("general")
 
     async def _cleanup_subprocesses(self) -> None:

@@ -62,6 +62,7 @@ class ServerConfig:
     timeout_seconds: float
     log_level: str
     transport: Literal["http", "stdio"]
+    allow_remote_http: bool = False
 
 
 def configure_logging(level: str) -> None:
@@ -146,6 +147,11 @@ def parse_args(argv: list[str] | None = None) -> ServerConfig:
         default=os.getenv(ENV_TRANSPORT, DEFAULT_TRANSPORT),
         help="MCP transport protocol",
     )
+    parser.add_argument(
+        "--allow-remote-http",
+        action="store_true",
+        help="Allow HTTP transport to bind non-loopback addresses.",
+    )
     args = parser.parse_args(argv)
     return ServerConfig(
         host=args.host,
@@ -154,6 +160,7 @@ def parse_args(argv: list[str] | None = None) -> ServerConfig:
         timeout_seconds=args.timeout,
         log_level=args.log_level,
         transport=args.transport,
+        allow_remote_http=args.allow_remote_http,
     )
 
 
@@ -171,7 +178,9 @@ def validate_config(config: ServerConfig) -> None:
     except ValueError as exc:
         raise ValueError(f"Invalid host address: {config.host}") from exc
 
-    if not host.is_loopback:
+    if not host.is_loopback and not (
+        config.transport == "http" and config.allow_remote_http
+    ):
         raise ValueError(
             f"CodeGenome MCP server is localhost-only; refusing to bind to {config.host}"
         )

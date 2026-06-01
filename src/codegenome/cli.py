@@ -104,13 +104,19 @@ def export(export_format: str, path: str):
     default=7331,
     help="Port to bind to when using HTTP transport."
 )
-def mcp_start(path: str, transport: str, port: int):
+@click.option(
+    "--lan",
+    is_flag=True,
+    help="Allow HTTP transport to bind on LAN (0.0.0.0) instead of localhost.",
+)
+def mcp_start(path: str, transport: str, port: int, lan: bool):
     """Initializes and starts the MCP server so external LLMs can connect.
 
     Args:
         path (str): The workspace directory path for the MCP server.
         transport (str): Transport protocol (stdio or http).
         port (int): Port to bind to when using HTTP transport.
+        lan (bool): Whether to expose HTTP transport on the local network.
     """
     workspace = Path(path).resolve()
     config = WatcherConfig(workspace=workspace)
@@ -123,7 +129,11 @@ def mcp_start(path: str, transport: str, port: int):
     from codegenome.mcp_server import main as mcp_main
     args = ["--db-path", str(db_path), "--transport", transport.lower()]
     if transport.lower() == "http":
+        host = "0.0.0.0" if lan else "127.0.0.1"
+        args.extend(["--host", host])
         args.extend(["--port", str(port)])
+        if lan:
+            args.append("--allow-remote-http")
     sys.exit(mcp_main(args))
 
 @cli.command()
@@ -321,7 +331,6 @@ def rules(client: tuple[str], port: int, dry_run: bool, path: str):
         path (str): The workspace directory path.
     """
     from codegenome.rules import generate_rules
-    import os
     
     workspace = Path(path).resolve()
     

@@ -68,6 +68,33 @@ def test_validate_config_rejects_non_localhost() -> None:
         validate_config(config)
 
 
+def test_validate_config_allows_remote_http_with_opt_in() -> None:
+    config = ServerConfig(
+        host="0.0.0.0",
+        port=7331,
+        db_path=Path("test.db"),
+        timeout_seconds=30.0,
+        log_level="INFO",
+        transport="http",
+        allow_remote_http=True,
+    )
+    validate_config(config)
+
+
+def test_validate_config_rejects_remote_stdio_even_with_opt_in() -> None:
+    config = ServerConfig(
+        host="0.0.0.0",
+        port=7331,
+        db_path=Path("test.db"),
+        timeout_seconds=30.0,
+        log_level="INFO",
+        transport="stdio",
+        allow_remote_http=True,
+    )
+    with pytest.raises(ValueError, match="localhost-only"):
+        validate_config(config)
+
+
 def test_graph_store_empty_db(tmp_path: Path) -> None:
     db_path = tmp_path / "empty.db"
     store = GraphStore(db_path)
@@ -218,6 +245,26 @@ def test_parse_args_defaults() -> None:
     assert config.port == 7331
     assert config.host == "127.0.0.1"
     assert config.transport == "http"
+
+
+def test_parse_args_remote_http_opt_in() -> None:
+    config = parse_args(
+        [
+            "--db-path",
+            "test.db",
+            "--transport",
+            "http",
+            "--host",
+            "0.0.0.0",
+            "--allow-remote-http",
+            "--port",
+            "8123",
+        ]
+    )
+    assert config.transport == "http"
+    assert config.host == "0.0.0.0"
+    assert config.allow_remote_http is True
+    assert config.port == 8123
 
 
 def test_invalid_request_returns_error_envelope(sample_db: Path) -> None:
