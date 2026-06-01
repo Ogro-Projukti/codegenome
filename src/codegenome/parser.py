@@ -214,10 +214,20 @@ def _load_languages() -> dict[str, Language]:
     for key, module_name, attr_name, lang_name in specs:
         try:
             module = __import__(module_name)
-            languages[key] = Language(getattr(module, attr_name)(), lang_name)
+            languages[key] = _build_language(module, attr_name, lang_name)
         except Exception as exc:  # pragma: no cover - optional grammars
             logger.warning("Failed to load tree-sitter grammar %s: %s", key, exc)
     return languages
+
+
+def _build_language(module: object, attr_name: str, lang_name: str) -> Language:
+    """Create a Language object across tree-sitter API variants."""
+    language_capsule = getattr(module, attr_name)()
+    try:
+        return Language(language_capsule, lang_name)
+    except TypeError:
+        # Newer tree-sitter releases accept only the grammar capsule.
+        return Language(language_capsule)
 
 
 class SourceParser:

@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Agent rules no longer reference misleading HTTP endpoints that caused agents to `curl` the server instead of using MCP transport.
 - MCP server keeps localhost-only behavior by default and now requires an explicit remote HTTP opt-in (`--allow-remote-http`) for non-loopback hosts.
 - Release lint blockers (unused imports and test lint violations) were resolved so full lint/test/build gates pass before upload.
+- Tree-sitter dependency constraints now support Python 3.12+ installations (including macOS Apple Silicon) while preserving legacy pins for Python 3.11 compatibility.
 
 ### Documentation
 
