@@ -50,6 +50,33 @@ class GraphIntelligence:
     ENTRY_FILE_NAMES = frozenset(
         {"__main__.py", "main.py", "app.py", "index.js", "index.ts", "index.tsx"}
     )
+    GENERATED_PATH_PARTS = frozenset(
+        {
+            ".cache",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+            ".tox",
+            ".venv",
+            "build",
+            "coverage",
+            "dist",
+            "node_modules",
+            "site-packages",
+            "vendor",
+            "vendors",
+            "venv",
+        }
+    )
+    GENERATED_FILE_SUFFIXES = (
+        ".bundle.css",
+        ".bundle.js",
+        ".generated.css",
+        ".generated.js",
+        ".map",
+        ".min.css",
+        ".min.js",
+    )
 
     def __init__(
         self,
@@ -86,7 +113,12 @@ class GraphIntelligence:
             churn_rankings=self.churn_rankings(),
         )
 
-    def detect_dead_code(self) -> list[str]:
+    def detect_dead_code(
+        self,
+        *,
+        include_generated: bool = False,
+        include_public_api: bool = False,
+    ) -> list[str]:
         """Detect functions and methods that are never called.
 
         Returns:
@@ -100,7 +132,14 @@ class GraphIntelligence:
         for node, attrs in self.graph.iter_nodes():
             if attrs.get("node_type") != "symbol":
                 continue
+            if not include_generated and self._is_generated_or_vendor(attrs):
+                continue
             if attrs.get("kind") not in {"function", "method"}:
+                continue
+            name = str(attrs.get("name", ""))
+            if self._is_dunder_name(name):
+                continue
+            if not include_public_api and self._is_public_api_method(attrs):
                 continue
             if node in entry_symbols:
                 continue
@@ -142,7 +181,11 @@ class GraphIntelligence:
         cycles.sort(key=lambda cycle: (len(cycle), cycle))
         return cycles
 
-    def detect_god_nodes(self) -> list[tuple[str, float]]:
+    def detect_god_nodes(
+        self,
+        *,
+        include_generated: bool = False,
+    ) -> list[tuple[str, float]]:
         """Identify nodes with excessively high degrees (god nodes).
 
         Returns:
@@ -152,6 +195,8 @@ class GraphIntelligence:
         scores: dict[str, float] = {}
         for node, attrs in self.graph.iter_nodes():
             if attrs.get("node_type") not in {"file", "symbol"}:
+                continue
+            if not include_generated and self._is_generated_or_vendor(attrs):
                 continue
             in_degree = self.graph.in_degree(node)
             out_degree = self.graph.out_degree(node)
@@ -235,7 +280,11 @@ class GraphIntelligence:
                 orphans.append(path)
         return sorted(orphans)
 
-    def complexity_rankings(self) -> list[tuple[str, int]]:
+    def complexity_rankings(
+        self,
+        *,
+        include_generated: bool = False,
+    ) -> list[tuple[str, int]]:
         """Rank symbols based on their cyclomatic complexity.
 
         Returns:
@@ -245,6 +294,8 @@ class GraphIntelligence:
         ranked: list[tuple[str, int]] = []
         for node, attrs in self.graph.iter_nodes():
             if attrs.get("node_type") != "symbol":
+                continue
+            if not include_generated and self._is_generated_or_vendor(attrs):
                 continue
             complexity = attrs.get("complexity")
             if complexity is None:
@@ -430,6 +481,36 @@ class GraphIntelligence:
             if PathLike(candidate).stem in module_index:
                 return module_index[PathLike(candidate).stem]
         return None
+
+    def _is_generated_or_vendor(self, attrs: dict[str, object]) -> bool:
+        path = str(attrs.get("file_path") or attrs.get("absolute_path") or "")
+        if not path:
+            return False
+
+        normalized = path.replace("\\", "/").casefold()
+        parts = {part for part in normalized.split("/") if part}
+        if parts & self.GENERATED_PATH_PARTS:
+            return True
+
+        name = PathLike(normalized).name
+        return name.endswith(self.GENERATED_FILE_SUFFIXES)
+
+    @staticmethod
+    def _is_dunder_name(name: str) -> bool:
+        return len(name) > 4 and name.startswith("__") and name.endswith("__")
+
+    @staticmethod
+    def _is_public_api_method(attrs: dict[str, object]) -> bool:
+        name = str(attrs.get("name", ""))
+        if not name or name.startswith("_"):
+            return False
+
+        qname = str(attrs.get("qualified_name") or "")
+        if "." not in qname:
+            return False
+
+        owner = qname.rsplit(".", 1)[0].rsplit(".", 1)[-1]
+        return bool(owner) and owner[:1].isupper() and not owner.startswith("_")
 
 
 class PathLike:

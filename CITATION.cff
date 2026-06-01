@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Turja"
+    given-names: "Md. Fatin Shadab"
+    orcid: "https://orcid.org/0009-0008-0026-2947"
+    affiliation: "United International University"
+title: "CodeGenome"
+version: "0.1.4"
+date-released: "2026-05-30"
+license: "MIT"
+repository-code: "https://github.com/Ogro-Projukti/codegenome"
+url: "https://codegenome.pages.dev/"
+abstract: >-
+  CodeGenome is an open-source codebase analyzer that treats software architecture
+  as a connectome—a map of connections between functions, classes, files, and imports.
+  It builds a project-level dependency graph, provides a higher-level community view
+  using Leiden community detection, and features real-time updates via a filesystem observer.
+  An integrated Model Context Protocol (MCP) server lets AI agents query structural
+  architectural context directly instead of consuming raw source files.
+keywords:
+  - "software-architecture"
+  - "code-analysis"
+  - "dependency-graphs"
+  - "community-detection"
+  - "model-context-protocol"
+  - "ai-assisted-development"
+preferred-citation:
+  type: generic
+  authors:
+    - family-names: "Turja"
+      given-names: "Md. Fatin Shadab"
+      orcid: "https://orcid.org/0009-0008-0026-2947"
+      affiliation: "United International University"
+  title: "CodeGenome: A Real-Time Hierarchical Codebase Connectome Engine for AI-Assisted Development"
+  year: 2026
+  medium: "Technical Report"
+  publisher: "Ogro-Projukti"
+  url: "https://github.com/Ogro-Projukti/codegenome"

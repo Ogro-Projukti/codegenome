@@ -1,19 +1,34 @@
-# Extensions & editor integrations
+# Extensions and editor integrations
 
-This folder holds **editor and agent integration assets** that ship with the open-source CLI repo. They are copied from the Watcher monorepo and will grow here as CLI-side installers expand.
+This folder holds **editor and agent integration assets** that ship with the Codegenome repository.
 
 ## Contents
 
 | Path | Purpose |
 |------|---------|
-| `templates/watcher-knowledge-graph.mdc` | Cursor rule template — teaches agents to use Watcher MCP tools |
+| `templates/watcher-knowledge-graph.mdc` | Cursor rule template — teaches agents to use Codegenome MCP tools |
 | `templates/copilot-instructions.md` | GitHub Copilot instructions template |
+| `templates/claude-instructions.md` | Claude-oriented instructions template |
 
 Templates use `{{MCP_PORT}}` as a placeholder (default MCP port: `7331`).
 
-## MCP client installer (CLI)
+## Generate rules with the CLI
 
-The Python package includes a config writer for AI clients:
+Prefer the built-in generator over manual copying:
+
+```bash
+codegenome rules --client cursor --port 7331 .
+codegenome rules --client copilot --port 7331 .
+codegenome rules --client all --port 7331 .
+```
+
+Supported `--client` values: `cursor`, `copilot`, `windsurf`, `agents`, `all`.
+
+Use `--dry-run` to preview output paths without writing files.
+
+## MCP client installer
+
+Write MCP server entries into AI client config files:
 
 ```bash
 python -m codegenome.installer \
@@ -24,13 +39,9 @@ python -m codegenome.installer \
   --port 7331
 ```
 
-Supported clients: `claude`, `cursor`, `codex`, `gemini`, `aider`, `windsurf`, `copilot`.
+Supported installer clients: `claude`, `cursor`, `codex`, `gemini`, `aider`, `windsurf`, `copilot`.
 
-## Planned moves from the monorepo
-
-- Cursor rule / Copilot template install command on the main `watcher` CLI (today: VS Code extension only)
-- Additional agent rule formats (AGENTS.md, Windsurf rules, etc.)
-- VS Code extension remains a separate package; only shared templates and installer logic live here
+See [MCP integration](../docs/mcp-integration.md) for transport modes, health checks, and troubleshooting.
 
 ## Manual install (Cursor rule)
 
@@ -41,3 +52,11 @@ sed 's/{{MCP_PORT}}/7331/g' extensions/templates/watcher-knowledge-graph.mdc \
 ```
 
 Restart Cursor after installing MCP config or rules.
+
+## Related documentation
+
+| Doc | Description |
+|-----|-------------|
+| [MCP integration](../docs/mcp-integration.md) | Server setup and installer |
+| [CLI reference](../docs/cli-reference.md) | `codegenome rules` and other commands |
+| [Installation](../docs/installation.md) | pip install and first graph build |

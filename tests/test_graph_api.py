@@ -1,7 +1,6 @@
 """Tests for the Graph API abstraction."""
 
 import networkx as nx
-import pytest
 
 from codegenome.graph_api import IGraphGraph, NetworkXGraph, create_graph
 
@@ -23,8 +22,9 @@ def test_graph_api_parity():
     assert nx_graph.number_of_nodes() == ig_graph.number_of_nodes() == 3
     assert nx_graph.number_of_edges() == ig_graph.number_of_edges() == 3
     
-    assert nx_graph.has_node("A") == ig_graph.has_node("A") == True
-    assert nx_graph.has_node("D") == ig_graph.has_node("D") == False
+    assert nx_graph.has_node("A") == ig_graph.has_node("A")
+    assert not nx_graph.has_node("D")
+    assert not ig_graph.has_node("D")
     
     assert nx_graph.get_node("A") == ig_graph.get_node("A") == {"type": "file"}
     assert nx_graph.get_edge("A", "B") == ig_graph.get_edge("A", "B") == {"weight": 1.5}
@@ -58,7 +58,8 @@ def test_graph_api_parity():
     assert nx_graph.number_of_nodes() == ig_graph.number_of_nodes() == 2
     assert nx_graph.number_of_edges() == ig_graph.number_of_edges() == 2
     
-    assert nx_graph.has_node("C") == ig_graph.has_node("C") == False
+    assert not nx_graph.has_node("C")
+    assert not ig_graph.has_node("C")
     
     # Test attribute setting
     nx_graph.set_node_attr("A", "seen", True)

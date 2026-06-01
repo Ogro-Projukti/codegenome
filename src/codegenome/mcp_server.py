@@ -62,6 +62,7 @@ class ServerConfig:
     timeout_seconds: float
     log_level: str
     transport: Literal["http", "stdio"]
+    allow_remote_http: bool = False
 
 
 def configure_logging(level: str) -> None:
@@ -146,6 +147,11 @@ def parse_args(argv: list[str] | None = None) -> ServerConfig:
         default=os.getenv(ENV_TRANSPORT, DEFAULT_TRANSPORT),
         help="MCP transport protocol",
     )
+    parser.add_argument(
+        "--allow-remote-http",
+        action="store_true",
+        help="Allow HTTP transport to bind non-loopback addresses.",
+    )
     args = parser.parse_args(argv)
     return ServerConfig(
         host=args.host,
@@ -154,6 +160,7 @@ def parse_args(argv: list[str] | None = None) -> ServerConfig:
         timeout_seconds=args.timeout,
         log_level=args.log_level,
         transport=args.transport,
+        allow_remote_http=args.allow_remote_http,
     )
 
 
@@ -171,7 +178,9 @@ def validate_config(config: ServerConfig) -> None:
     except ValueError as exc:
         raise ValueError(f"Invalid host address: {config.host}") from exc
 
-    if not host.is_loopback:
+    if not host.is_loopback and not (
+        config.transport == "http" and config.allow_remote_http
+    ):
         raise ValueError(
             f"CodeGenome MCP server is localhost-only; refusing to bind to {config.host}"
         )
@@ -229,6 +238,7 @@ class GraphService:
 
     def _invoke(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         with self._lock:
+            self._store.refresh_latest()
             return fn(*args, **kwargs)
 
     def run(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -457,13 +467,15 @@ def create_server(
 
     @mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
     async def health(_request: Request) -> JSONResponse:
-        summary = service.store.summary()
+        summary = service.run(service.store.summary)
         payload = {
             "status": "ok",
             "service": "watcher-mcp",
             "version": __version__,
             "db_path": str(service.config.db_path),
             "snapshot_id": summary.snapshot_id,
+            "latest_snapshot_id": summary.latest_snapshot_id,
+            "current": summary.current,
             "node_count": summary.node_count,
             "edge_count": summary.edge_count,
             "empty": summary.empty,
@@ -547,33 +559,45 @@ def create_server(
 
     @mcp.tool
     @guarded_tool
-    def get_dead_code() -> list[str]:
+    def get_dead_code(
+        include_generated: bool = False,
+        include_public_api: bool = False,
+    ) -> dict[str, Any]:
         """Detect likely dead code symbols."""
-        return service.store.get_dead_code()
+        return service.store.get_dead_code(
+            include_generated=include_generated,
+            include_public_api=include_public_api,
+        )
 
     @mcp.tool
     @guarded_tool
-    def get_entry_points() -> list[str]:
+    def get_entry_points() -> dict[str, Any]:
         """Detect graph entry points."""
         return service.store.get_entry_points()
 
     @mcp.tool
     @guarded_tool
-    def get_god_nodes() -> list[dict[str, Any]]:
+    def get_god_nodes(include_generated: bool = False) -> dict[str, Any]:
         """Return highly connected god nodes."""
-        return service.store.get_god_nodes()
+        return service.store.get_god_nodes(include_generated=include_generated)
 
     @mcp.tool
     @guarded_tool
-    def get_circular_deps() -> list[list[str]]:
+    def get_circular_deps() -> dict[str, Any]:
         """Return circular file import dependencies."""
         return service.store.get_circular_deps()
 
     @mcp.tool
     @guarded_tool
-    def get_complexity(limit: int = 25) -> list[dict[str, Any]]:
+    def get_complexity(
+        limit: int = 25,
+        include_generated: bool = False,
+    ) -> dict[str, Any]:
         """Return top complexity-ranked symbols."""
-        return service.store.get_complexity(limit=limit)
+        return service.store.get_complexity(
+            limit=limit,
+            include_generated=include_generated,
+        )
 
     @mcp.tool
     @guarded_tool
@@ -597,7 +621,7 @@ def create_server(
         query: str,
         node_type: str | None = None,
         limit: int = 25,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """Search nodes by id, name, qualified name, or file path."""
         return service.store.search_nodes(query, node_type=node_type, limit=limit)
 

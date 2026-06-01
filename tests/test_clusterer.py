@@ -5,6 +5,7 @@ from __future__ import annotations
 from codegenome.builder import GraphBuilder, file_node_id
 from codegenome.clusterer import GraphClusterer
 from codegenome.graph_api import Graph
+from codegenome.graph_api import create_graph
 from codegenome.parser import ParseResult, ParsedCall, ParsedImport, ParsedSymbol
 from codegenome.scanner import FileRecord, ScanResult
 
@@ -24,8 +25,6 @@ def _build_graph(files: dict[str, ParseResult]) -> Graph:
     graph, _, _ = GraphBuilder().build(scan, files)
     return graph
 
-
-from codegenome.graph_api import create_graph
 
 def test_clusterer_empty_graph() -> None:
     result = GraphClusterer().cluster(create_graph("igraph"))

@@ -158,7 +158,8 @@
 
     await pollLiveGraph(true);
     
-    const ws = new WebSocket('ws://localhost:8765');
+    const wsPort = config.liveWsPort || 8765;
+    const ws = new WebSocket(`ws://${window.location.hostname}:${wsPort}`);
     ws.onopen = () => {
       console.log('WebSocket connected for live updates');
     };

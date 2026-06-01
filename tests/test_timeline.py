@@ -74,7 +74,7 @@ def test_timeline_node_history_and_churn_rate(tmp_path: Path, sample_graph: Grap
     timeline = GraphTimeline(tmp_path / "timeline.db")
     node_id = file_node_id("alpha.py")
 
-    first_id = timeline.record_snapshot(sample_graph, label="v1", created_at=1.0)
+    timeline.record_snapshot(sample_graph, label="v1", created_at=1.0)
     changed = sample_graph.copy()
     changed.set_node_attr(node_id, "churn", 1)
     timeline.record_snapshot(changed, label="v2", created_at=2.0)
