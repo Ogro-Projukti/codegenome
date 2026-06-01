@@ -103,6 +103,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Bio-tech canvas background effect
   initCanvas();
+
+  // Scroll Progress logic
+  const progressBtn = document.getElementById('explore-progress');
+  if (progressBtn) {
+    const progressCircle = progressBtn.querySelector('.progress-ring-circle');
+    // Using fixed circumference for r=22 (2 * PI * 22 ≈ 138.23)
+    const circumference = 138.23;
+    
+    function setProgress(percent) {
+      const offset = circumference - (percent / 100) * circumference;
+      progressCircle.style.strokeDashoffset = offset;
+    }
+    
+    window.addEventListener('scroll', () => {
+      const scrollY = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const scrollPercent = (scrollY / docHeight) * 100;
+      
+      // Prevent calculation errors on very short pages
+      setProgress(docHeight > 0 ? scrollPercent : 100);
+      
+      // If near bottom, arrow points up
+      if (scrollPercent > 95) {
+        progressBtn.classList.add('is-bottom');
+        progressBtn.setAttribute('aria-label', 'Scroll to top');
+      } else {
+        progressBtn.classList.remove('is-bottom');
+        progressBtn.setAttribute('aria-label', 'Scroll to bottom');
+      }
+    });
+    
+    progressBtn.addEventListener('click', () => {
+      if (progressBtn.classList.contains('is-bottom')) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }
+    });
+    
+    // Initial call to set correct progress on page load
+    window.dispatchEvent(new Event('scroll'));
+  }
 });
 
 function initGallery() {
@@ -345,9 +387,46 @@ async function fetchContributors() {
       renderContributors(JSON.parse(cached));
     }
     
-    const res = await fetch('https://api.github.com/repos/Ogro-Projukti/codegenome/contributors');
+    // Fetch recent commits to bypass GitHub's /contributors cache which can be delayed by 24h
+    const res = await fetch('https://api.github.com/repos/Ogro-Projukti/codegenome/commits?per_page=100');
     if (res.ok) {
-      const contributors = await res.json();
+      const commits = await res.json();
+      const contributorMap = new Map();
+      
+      commits.forEach(item => {
+        // Linked GitHub accounts
+        if (item.author && item.author.login) {
+          const login = item.author.login;
+          if (!contributorMap.has(login)) {
+            contributorMap.set(login, {
+              login: login,
+              avatar_url: item.author.avatar_url,
+              html_url: item.author.html_url,
+              contributions: 1
+            });
+          } else {
+            contributorMap.get(login).contributions++;
+          }
+        } 
+        // Unlinked/anonymous commits
+        else if (item.commit && item.commit.author) {
+          const name = item.commit.author.name;
+          if (!contributorMap.has(name)) {
+            contributorMap.set(name, {
+              login: name,
+              avatar_url: 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=0a1f18&color=00ffaa',
+              html_url: 'https://github.com/Ogro-Projukti/codegenome/commits?author=' + encodeURIComponent(name),
+              contributions: 1
+            });
+          } else {
+            contributorMap.get(name).contributions++;
+          }
+        }
+      });
+
+      // Sort by contributions descending
+      const contributors = Array.from(contributorMap.values()).sort((a, b) => b.contributions - a.contributions);
+
       renderContributors(contributors);
       localStorage.setItem('cg_contributors', JSON.stringify(contributors));
     } else if (!cached && container) {
