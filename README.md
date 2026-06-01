@@ -1,24 +1,31 @@
 <div align="center">
-  <img src="assets/header.png" alt="Codegenome Header" width="100%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/header.png" alt="Codegenome Header" width="100%" />
 
   <br />
 
   <h1>Codegenome</h1>
 
   <p>
-    <strong>Open-source CLI for building, exporting, and querying local codebase knowledge graphs.</strong>
+    <strong>Turn your codebase into a living knowledge graph.</strong> An MCP server using tree-sitter to stream high-fidelity architectural context to Cursor and Claude.
   </p>
 
   <p>
-    <a href="https://github.com/Ogro-Projukti/codegenome/actions"><img src="https://img.shields.io/github/actions/workflow/status/Ogro-Projukti/codegenome/main.yml?style=flat-square" alt="Build Status"></a>
-    <a href="https://pypi.org/project/codegenome/"><img src="https://img.shields.io/pypi/v/codegenome?style=flat-square" alt="PyPI Version"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/Ogro-Projukti/codegenome?style=flat-square" alt="License"></a>
+    <a href="https://codegenome.pages.dev/"><img src="https://img.shields.io/badge/docs-website-blue?style=flat-square" alt="Documentation"></a>
+    <a href="https://pypi.org/project/codegenome/"><img src="https://img.shields.io/badge/pypi-codegenome-blue?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
+    <a href="https://github.com/Ogro-Projukti/codegenome/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"></a>
   </p>
 </div>
 
----
 
-**Codegenome** scans your repository, extracts symbols and relationships using `tree-sitter`, stores timeline snapshots in SQLite, and exposes this powerful intelligence to AI agents through MCP (Model Context Protocol). Use it headless in CI, on servers, or alongside any editor—no VS Code required!
+## 🌐 The Connectome of Code: Mapping the Digital Brain
+
+Your codebase isn't a static document—it's an evolving digital brain. Standard context tools dump flat, truncated text files into your LLM window, causing massive token bloat and architectural hallucinations. 
+
+**Codegenome treats code like a living connectome.** By running localized, incremental `tree-sitter` passes and tracking changes in SQLite, it monitors your repository's structural neuroplasticity in real time—without dragging down system performance.
+
+### ⚡ Watch your connectome grow as your agent codes
+As your AI agent (**Cursor, Claude Desktop, or custom MCP clients**) generates new modules, refactors functions, or shifts dependencies, Codegenome maps out those structural relationships instantly. It exposes high-fidelity intelligence directly to your editor via the **Model Context Protocol (MCP)**, allowing AI agents to reason about your entire system architecture with surgical precision. Use it headless in CI, on servers, or locally—no complex IDE wrappers required.
+
 
 ## ✨ What Codegenome Can Do
 
@@ -29,8 +36,8 @@ Codegenome deeply understands your code. It parses your source files, incrementa
 Keep your codebase intelligence fresh in real-time. As you write code, Codegenome watches your workspace and automatically updates the graph, so your agents and queries are never out of sync.
 
 <div align="center">
-  <img src="assets/live-graph-1.png" alt="Live Graph Visualization" width="48%" />
-  <img src="assets/live-graph-2.png" alt="Live Graph Detail" width="48%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/live-graph-1.png" alt="Live Graph Visualization" width="48%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/live-graph-2.png" alt="Live Graph Detail" width="48%" />
 </div>
 
 ### 🖥️ Rich Terminal User Interface (TUI)
@@ -42,7 +49,7 @@ codegenome tui
 ```
 
 <div align="center">
-  <img src="assets/tui.png" alt="Codegenome TUI" width="80%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/tui.png" alt="Codegenome TUI" width="80%" />
 </div>
 
 ### 🤖 Seamless AI Agent Integration via MCP
@@ -55,6 +62,8 @@ Need your graph in a different format? Codegenome seamlessly exports to:
 - **GraphML**
 - **Cypher** (for Neo4j)
 - **Obsidian** (for personal knowledge bases)
+
+Use `codegenome export --format <name>` for `json`, `html`, `cypher`, and `obsidian`. Additional formats are available through the [legacy CLI](docs/cli-reference.md#legacy-cli-python--m-codegenome).
 
 ## 🚀 Quick Start
 
@@ -71,7 +80,10 @@ codegenome analyze .
 # Export your graph
 codegenome export --format obsidian --path .
 
-# Run in watch mode with LAN live graph sharing
+# Run in watch mode with live graph web UI
+codegenome evolve --live .
+
+# Share the live graph with other devices on your LAN (v0.1.4+)
 codegenome evolve --live --lan .
 ```
 
@@ -91,16 +103,17 @@ codegenome evolve --live --lan .
 
 | Doc | Description |
 |-----|-------------|
-| 📖 [CLI reference](docs/cli-reference.md) | Flags, workflows, troubleshooting |
+| 📖 [CLI reference](docs/cli-reference.md) | Subcommands, legacy flags, workflows |
 | ⚙️ [Installation](docs/installation.md) | pip, venv, MCP setup |
 | 🔌 [MCP integration](docs/mcp-integration.md) | Server modes and client installer |
 | 🧩 [Extensions](extensions/README.md) | Cursor rules and Copilot templates |
+| 🤝 [Contributing](CONTRIBUTING.md) | Development setup, tests, pull requests |
 
 ## ⚖️ License
 
-Codegenome is open-source software licensed under the **[MIT License](LICENSE)**.
+Codegenome is open-source software licensed under the **[MIT License](https://github.com/Ogro-Projukti/codegenome/blob/main/LICENSE)**.
 
 <div align="center">
   <br />
-  <img src="assets/logo.png" alt="Codegenome Logo" width="100" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/logo.png" alt="Codegenome Logo" width="100" />
 </div>

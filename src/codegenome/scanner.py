@@ -7,27 +7,23 @@ and deletions using a SQLite-backed hash cache.
 
 from __future__ import annotations
 
-import fnmatch
 import hashlib
 import os
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from codegenome.gitignore import DEFAULT_IGNORE_PATTERNS, IgnoreMatcher
 
-DEFAULT_IGNORE_PATTERNS = [
-    ".git",
-    ".git/**",
-    ".venv",
-    ".venv/**",
-    "node_modules",
-    "node_modules/**",
-    "__pycache__",
-    "__pycache__/**",
-    "*.pyc",
-    ".genome",
-    ".genome/**",
-    ".genomeignore",
+__all__ = [
+    "DEFAULT_IGNORE_PATTERNS",
+    "FileRecord",
+    "IgnoreMatcher",
+    "ScanCache",
+    "ScanResult",
+    "WorkspaceScanner",
+    "sha256_file",
 ]
 
 
@@ -69,99 +65,6 @@ class ScanResult:
     modified: list[str] = field(default_factory=list)
     deleted: list[str] = field(default_factory=list)
     unchanged: list[str] = field(default_factory=list)
-
-
-class IgnoreMatcher:
-    """Match paths against .genomeignore-style glob patterns.
-
-    This class handles parsing and matching paths against ignore files,
-    similar to .gitignore.
-    """
-
-    def __init__(self, patterns: list[str] | None = None) -> None:
-        """Initialize the IgnoreMatcher with optional additional patterns.
-
-        Args:
-            patterns (list[str] | None): Additional glob patterns to ignore.
-        """
-        self._patterns = list(DEFAULT_IGNORE_PATTERNS)
-        if patterns:
-            self._patterns.extend(patterns)
-
-    @classmethod
-    def from_file(cls, root: Path, filename: str = ".genomeignore") -> IgnoreMatcher:
-        """Create an IgnoreMatcher by reading a specific ignore file.
-
-        Args:
-            root (Path): The root directory containing the ignore file.
-            filename (str): The name of the ignore file. Defaults to ".genomeignore".
-
-        Returns:
-            IgnoreMatcher: An initialized matcher instance.
-        """
-        ignore_path = root / filename
-        patterns: list[str] = []
-        if ignore_path.is_file():
-            for line in ignore_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                patterns.append(stripped)
-        return cls(patterns)
-
-    @classmethod
-    def for_workspace(cls, root: Path) -> IgnoreMatcher:
-        """Load default, .gitignore, and .genomeignore patterns for a workspace.
-
-        Args:
-            root (Path): The root directory of the workspace.
-
-        Returns:
-            IgnoreMatcher: An initialized matcher instance with workspace patterns.
-        """
-        patterns: list[str] = []
-        for filename in (".gitignore", ".genomeignore"):
-            ignore_path = root / filename
-            if not ignore_path.is_file():
-                continue
-            for line in ignore_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                patterns.append(stripped)
-        return cls(patterns)
-
-    def is_ignored(self, rel_path: str, is_dir: bool = False) -> bool:
-        """Determine if a given relative path should be ignored.
-
-        Args:
-            rel_path (str): The relative path to check.
-            is_dir (bool): Whether the path represents a directory. Defaults to False.
-
-        Returns:
-            bool: True if the path matches an ignore pattern, False otherwise.
-        """
-        normalized = rel_path.replace("\\", "/")
-        if is_dir and not normalized.endswith("/"):
-            normalized = f"{normalized}/"
-
-        parts = normalized.split("/")
-        for index in range(len(parts)):
-            segment = "/".join(parts[: index + 1])
-            if is_dir and not segment.endswith("/"):
-                segment = f"{segment}/"
-            for pattern in self._patterns:
-                if fnmatch.fnmatch(normalized, pattern):
-                    return True
-                if fnmatch.fnmatch(segment, pattern):
-                    return True
-                if fnmatch.fnmatch(parts[-1], pattern):
-                    return True
-                if pattern.endswith("/"):
-                    dir_prefix = pattern.rstrip("/")
-                    if normalized == dir_prefix or normalized.startswith(f"{dir_prefix}/"):
-                        return True
-        return False
 
 
 class ScanCache:
@@ -274,7 +177,6 @@ class WorkspaceScanner:
         self,
         root: Path | str,
         cache_db: Path | str | None = None,
-        ignore_file: str = ".genomeignore",
     ) -> None:
         """Initialize the WorkspaceScanner.
 
@@ -282,10 +184,9 @@ class WorkspaceScanner:
             root (Path | str): The workspace root directory.
             cache_db (Path | str | None): Path to the SQLite cache DB.
                 If None, defaults to `.genome/scan_cache.db` in the workspace root.
-            ignore_file (str): The name of the ignore file. Defaults to ".genomeignore".
         """
         self.root = Path(root).resolve()
-        self.ignore = IgnoreMatcher.from_file(self.root, ignore_file)
+        self.ignore = IgnoreMatcher.for_workspace(self.root)
         if cache_db is None:
             cache_db = self.root / ".genome" / "scan_cache.db"
         self.cache_path = Path(cache_db).resolve()
@@ -297,15 +198,24 @@ class WorkspaceScanner:
             rel_cache = self.cache_path.relative_to(self.root).as_posix()
         except ValueError:
             return
-        if rel_cache not in self.ignore._patterns:
-            self.ignore._patterns.append(rel_cache)
+        if rel_cache:
+            self.ignore.add_pattern(rel_cache)
 
-    def scan(self, incremental: bool = True) -> ScanResult:
+    def scan(
+        self,
+        incremental: bool = True,
+        *,
+        on_progress: Callable[[int], None] | None = None,
+        progress_interval: int = 100,
+    ) -> ScanResult:
         """Perform a workspace scan and compare against the cache.
 
         Args:
             incremental (bool): If True, compare against previous cache state.
                 If False, ignore previous state and treat all files as added.
+            on_progress (Callable[[int], None] | None): Optional callback invoked
+                periodically with the number of files scanned so far.
+            progress_interval (int): Minimum file count between progress callbacks.
 
         Returns:
             ScanResult: The result of the scan including added, modified,
@@ -314,6 +224,7 @@ class WorkspaceScanner:
         result = ScanResult(root=str(self.root))
         previous = self.cache.load_all() if incremental else {}
         seen: set[str] = set()
+        scanned = 0
 
         if not self.root.is_dir():
             self.cache.commit()
@@ -354,6 +265,11 @@ class WorkspaceScanner:
                 )
                 result.files.append(record)
                 seen.add(rel_path)
+                scanned += 1
+                if on_progress is not None and (
+                    scanned == 1 or scanned % progress_interval == 0
+                ):
+                    on_progress(scanned)
 
                 prev = previous.get(rel_path)
                 if prev is None:
@@ -368,6 +284,9 @@ class WorkspaceScanner:
         for path in sorted(set(previous) - seen):
             result.deleted.append(path)
             self.cache.delete(path)
+
+        if on_progress is not None and scanned > 0 and scanned % progress_interval != 0:
+            on_progress(scanned)
 
         self.cache.commit()
         return result

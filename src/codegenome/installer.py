@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-SERVER_NAME = "watcher"
+SERVER_NAME = "genome"
 
 TransportMode = Literal["stdio", "http"]
 

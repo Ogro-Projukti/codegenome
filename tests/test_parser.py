@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from codegenome import parser as parser_module
 from codegenome.parser import SourceParser
 
 
@@ -129,3 +131,33 @@ def test_parser_read_failure_is_graceful(parser: SourceParser, tmp_path: Path) -
     result = parser.parse_file(path)
     assert result is not None
     assert result.errors
+
+
+def test_build_language_supports_legacy_signature(monkeypatch: pytest.MonkeyPatch) -> None:
+    capsule = object()
+
+    class LegacyLanguage:
+        def __init__(self, received_capsule: object, name: str) -> None:
+            self.received_capsule = received_capsule
+            self.name = name
+
+    module = SimpleNamespace(language=lambda: capsule)
+    monkeypatch.setattr(parser_module, "Language", LegacyLanguage)
+
+    language = parser_module._build_language(module, "language", "python")
+    assert language.received_capsule is capsule
+    assert language.name == "python"
+
+
+def test_build_language_supports_modern_signature(monkeypatch: pytest.MonkeyPatch) -> None:
+    capsule = object()
+
+    class ModernLanguage:
+        def __init__(self, received_capsule: object) -> None:
+            self.received_capsule = received_capsule
+
+    module = SimpleNamespace(language=lambda: capsule)
+    monkeypatch.setattr(parser_module, "Language", ModernLanguage)
+
+    language = parser_module._build_language(module, "language", "python")
+    assert language.received_capsule is capsule

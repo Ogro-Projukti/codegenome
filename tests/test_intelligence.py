@@ -158,6 +158,67 @@ def test_intelligence_rankings() -> None:
     assert churn[0] == (file_node_id("rank.py"), 3)
 
 
+def test_intelligence_filters_generated_complexity_by_default() -> None:
+    graph = create_graph("igraph")
+    graph.add_node(
+        "symbol:src/app.py:hard",
+        node_type="symbol",
+        file_path="src/app.py",
+        name="hard",
+        qualified_name="hard",
+        kind="function",
+        complexity=5,
+    )
+    graph.add_node(
+        "symbol:src/assets/vendor.min.js:a",
+        node_type="symbol",
+        file_path="src/assets/vendor.min.js",
+        name="a",
+        qualified_name="a",
+        kind="function",
+        complexity=99,
+    )
+
+    intelligence = GraphIntelligence(graph)
+
+    assert intelligence.complexity_rankings()[0] == ("symbol:src/app.py:hard", 5)
+    assert intelligence.complexity_rankings(include_generated=True)[0] == (
+        "symbol:src/assets/vendor.min.js:a",
+        99,
+    )
+
+
+def test_intelligence_filters_public_api_methods_from_dead_code_by_default() -> None:
+    graph = create_graph("igraph")
+    graph.add_node(
+        "symbol:src/codegenome/graph_api.py:Graph.add_node",
+        node_type="symbol",
+        file_path="src/codegenome/graph_api.py",
+        name="add_node",
+        qualified_name="Graph.add_node",
+        kind="method",
+        complexity=1,
+    )
+    graph.add_node(
+        "symbol:src/codegenome/graph_api.py:Graph._unused_helper",
+        node_type="symbol",
+        file_path="src/codegenome/graph_api.py",
+        name="_unused_helper",
+        qualified_name="Graph._unused_helper",
+        kind="method",
+        complexity=1,
+    )
+
+    intelligence = GraphIntelligence(graph)
+
+    assert intelligence.detect_dead_code() == [
+        "symbol:src/codegenome/graph_api.py:Graph._unused_helper"
+    ]
+    assert "symbol:src/codegenome/graph_api.py:Graph.add_node" in (
+        intelligence.detect_dead_code(include_public_api=True)
+    )
+
+
 def test_intelligence_detects_entry_points() -> None:
     alpha = ParseResult(path="alpha.py", language="python")
     alpha.symbols = [

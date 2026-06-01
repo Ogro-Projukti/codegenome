@@ -1,0 +1,41 @@
+name: Compatibility
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  install-and-parser-smoke:
+    name: "${{ matrix.os }} / py${{ matrix.python-version }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Upgrade build tooling
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install .
+          python -m pip install pytest
+
+      - name: Parser test suite
+        run: python -m pytest tests/test_parser.py -q
+
+      - name: CLI smoke test
+        run: |
+          codegenome --help
+          python -c "import codegenome; print(codegenome.__version__)"

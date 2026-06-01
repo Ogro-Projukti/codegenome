@@ -1,0 +1,4 @@
+include LICENSE
+include README.md
+recursive-include src/codegenome/assets *
+recursive-include src/codegenome/templates *

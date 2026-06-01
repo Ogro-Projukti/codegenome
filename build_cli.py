@@ -41,7 +41,6 @@ HIDDEN_IMPORTS = [
     "fastmcp",
     "starlette",
     "uvicorn",
-    "radon",
 ]
 
 COLLECT_ALL = [

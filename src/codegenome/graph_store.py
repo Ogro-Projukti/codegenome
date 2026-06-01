@@ -28,10 +28,12 @@ class GraphSummary:
         empty (bool): Indicates whether the snapshot contains any nodes.
     """
     snapshot_id: int | None
+    latest_snapshot_id: int | None
     node_count: int
     edge_count: int
     label: str | None
     empty: bool
+    current: bool
 
 
 class GraphStore:
@@ -101,6 +103,40 @@ class GraphStore:
         self._snapshot_label = latest.label
         self._intelligence = GraphIntelligence(self._graph)
 
+    def refresh_latest(self) -> bool:
+        """Load the newest timeline snapshot if it changed after startup.
+
+        Returns:
+            bool: True when a newer snapshot was loaded.
+        """
+        if self._timeline is None:
+            raise GraphStoreError("Timeline database is not open")
+
+        snapshots = self._timeline.list_snapshots()
+        if not snapshots:
+            changed = self._snapshot_id is not None or not self.is_empty
+            self._graph = create_graph("igraph")
+            self._snapshot_id = None
+            self._snapshot_label = None
+            self._intelligence = GraphIntelligence(self._graph)
+            return changed
+
+        latest = snapshots[-1]
+        if latest.snapshot_id == self._snapshot_id:
+            return False
+
+        try:
+            self._graph = self._timeline.load_snapshot(latest.snapshot_id)
+        except sqlite3.Error as exc:
+            raise GraphStoreError(
+                f"Failed to load snapshot {latest.snapshot_id}: {exc}"
+            ) from exc
+
+        self._snapshot_id = latest.snapshot_id
+        self._snapshot_label = latest.label
+        self._intelligence = GraphIntelligence(self._graph)
+        return True
+
     def close(self) -> None:
         """Closes the connection to the timeline database."""
         if self._timeline is not None:
@@ -113,12 +149,15 @@ class GraphStore:
         Returns:
             GraphSummary: High-level metrics for the current graph state.
         """
+        latest_snapshot_id = self._latest_snapshot_id()
         return GraphSummary(
             snapshot_id=self._snapshot_id,
+            latest_snapshot_id=latest_snapshot_id,
             node_count=self._graph.number_of_nodes(),
             edge_count=self._graph.number_of_edges(),
             label=self._snapshot_label,
             empty=self.is_empty,
+            current=self._snapshot_id == latest_snapshot_id,
         )
 
     def get_graph(
@@ -141,6 +180,8 @@ class GraphStore:
         summary = self.summary()
         payload: dict[str, Any] = {
             "snapshot_id": summary.snapshot_id,
+            "latest_snapshot_id": summary.latest_snapshot_id,
+            "current": summary.current,
             "label": summary.label,
             "node_count": summary.node_count,
             "edge_count": summary.edge_count,
@@ -328,13 +369,21 @@ class GraphStore:
             ]
         return payload
 
-    def get_dead_code(self) -> list[str]:
+    def get_dead_code(
+        self,
+        *,
+        include_generated: bool = False,
+        include_public_api: bool = False,
+    ) -> list[str]:
         """Detects likely dead code by finding unreferenced symbols.
 
         Returns:
             list[str]: A list of node IDs corresponding to unreferenced symbols.
         """
-        return self._require_intelligence().detect_dead_code()
+        return self._require_intelligence().detect_dead_code(
+            include_generated=include_generated,
+            include_public_api=include_public_api,
+        )
 
     def get_entry_points(self) -> list[str]:
         """Detects entry points to the application (e.g., main scripts, public API).
@@ -344,7 +393,7 @@ class GraphStore:
         """
         return self._require_intelligence().detect_entry_points()
 
-    def get_god_nodes(self) -> list[dict[str, Any]]:
+    def get_god_nodes(self, *, include_generated: bool = False) -> list[dict[str, Any]]:
         """Identifies highly connected or overly complex nodes (God Nodes).
 
         Returns:
@@ -352,7 +401,9 @@ class GraphStore:
         """
         return [
             {"node_id": node_id, "score": score}
-            for node_id, score in self._require_intelligence().detect_god_nodes()
+            for node_id, score in self._require_intelligence().detect_god_nodes(
+                include_generated=include_generated
+            )
         ]
 
     def get_circular_deps(self) -> list[list[str]]:
@@ -363,7 +414,12 @@ class GraphStore:
         """
         return self._require_intelligence().detect_circular_dependencies()
 
-    def get_complexity(self, *, limit: int = 25) -> list[dict[str, Any]]:
+    def get_complexity(
+        self,
+        *,
+        limit: int = 25,
+        include_generated: bool = False,
+    ) -> list[dict[str, Any]]:
         """Ranks nodes by their computed complexity score.
 
         Args:
@@ -377,7 +433,9 @@ class GraphStore:
         """
         if limit <= 0:
             raise ValueError("limit must be a positive integer")
-        rankings = self._require_intelligence().complexity_rankings()[:limit]
+        rankings = self._require_intelligence().complexity_rankings(
+            include_generated=include_generated
+        )[:limit]
         return [{"node_id": node_id, "complexity": score} for node_id, score in rankings]
 
     def get_churn(
@@ -485,6 +543,12 @@ class GraphStore:
             if len(edges) >= limit:
                 break
         return edges
+
+    def _latest_snapshot_id(self) -> int | None:
+        if self._timeline is None:
+            return self._snapshot_id
+        snapshots = self._timeline.list_snapshots()
+        return snapshots[-1].snapshot_id if snapshots else None
 
     @staticmethod
     def _snapshot_info_dict(info: SnapshotInfo) -> dict[str, Any]:
