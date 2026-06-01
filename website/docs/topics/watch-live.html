@@ -22,13 +22,17 @@
   <h2 id="evolve">Evolve command (recommended)</h2>
   <p><code>codegenome evolve</code> runs an initial build, starts a local HTTP server for the HTML graph, watches <code>.py</code> files, and optionally broadcasts deltas over WebSocket:</p>
   <div class="doc-code-block">
-    <button class="copy-btn" type="button" data-copy="codegenome evolve --live .">Copy</button>
-    <pre>codegenome evolve --live .</pre>
+    <button class="copy-btn" type="button" data-copy="codegenome evolve --live --lan .">Copy</button>
+    <pre>codegenome evolve --live --lan .</pre>
   </div>
   <ul>
-    <li>HTTP UI: <code>http://localhost:8000/graph.html?live=1</code></li>
-    <li>WebSocket (with <code>--live</code>): <code>ws://127.0.0.1:8765</code></li>
+    <li>HTTP UI (Local): <code>http://localhost:8000/graph.html?live=1</code></li>
+    <li>HTTP UI (LAN): Printed in terminal (e.g., <code>http://192.168.1.x:8000/graph.html?live=1</code>)</li>
+    <li>WebSocket (with <code>--live</code>): <code>ws://127.0.0.1:8765</code> (or LAN IP with <code>--lan</code>)</li>
   </ul>
+  
+  <h2 id="live-chat">Live Graph AI Chat</h2>
+  <p>When viewing the live graph in your browser, you can open the built-in AI Chat panel to query your architecture directly. Supported providers include <strong>Ollama (Local/Cloud)</strong>, <strong>OpenAI</strong>, <strong>Gemini</strong>, and <strong>Groq</strong>. You can adjust the graph context size (minimal to max) to control how much local neighborhood data is sent with each prompt.</p>
 
   <h2 id="legacy-watch">Legacy watch mode</h2>
   <p>The flag-based CLI supports debounced rebuilds and metric-based live graph polling:</p>

@@ -34,12 +34,20 @@ python -m codegenome.installer \
   <h2 id="standalone">Standalone server</h2>
   <div class="doc-code-block"><pre>python -m codegenome.mcp_server --help
 
-# HTTP (default port 7331)
+# HTTP (default port 7331, localhost only)
 python -m codegenome.mcp_server \
   --db-path ./.genome/watcher.db \
   --host 127.0.0.1 \
   --port 7331 \
   --transport http
+
+# HTTP accessible on LAN
+python -m codegenome.mcp_server \
+  --db-path ./.genome/watcher.db \
+  --host 0.0.0.0 \
+  --port 7331 \
+  --transport http \
+  --allow-remote-http
 
 # Stdio
 python -m codegenome.mcp_server \
@@ -50,6 +58,8 @@ python -m codegenome.mcp_server \
   <div class="doc-code-block"><pre>codegenome analyze .
 codegenome mcp-start .</pre></div>
   <p>Starts stdio transport using the workspace database path.</p>
+  <p>To start an HTTP MCP server accessible over your local network, use the <code>--transport</code> and <code>--lan</code> flags:</p>
+  <div class="doc-code-block"><pre>codegenome mcp-start --transport http --port 7331 --lan .</pre></div>
 
   <h2 id="installer">Config installer</h2>
   <div class="doc-code-block"><pre>python -m codegenome.installer --help</pre></div>

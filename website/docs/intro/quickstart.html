@@ -46,8 +46,8 @@ codegenome export --format json --path .</pre></div>
   <p>Exports land in <code>.genome/exports/</code>.</p>
 
   <h2 id="watch">5. (Optional) Live watch mode</h2>
-  <p>Rebuild the graph as files change and open a browser graph view:</p>
-  <div class="doc-code-block"><pre>codegenome evolve --live .</pre></div>
+  <p>Rebuild the graph as files change and broadcast the live graph over your local network:</p>
+  <div class="doc-code-block"><pre>codegenome evolve --live --lan .</pre></div>
   <p>See <a href="../topics/watch-live.html">Watch &amp; live graph</a>.</p>
 
   <h2 id="mcp">6. (Optional) Connect an AI agent</h2>
@@ -67,7 +67,7 @@ codegenome export --format json --path .</pre></div>
         <tr><td>Build graph</td><td><code>codegenome analyze .</code></td></tr>
         <tr><td>Interactive UI</td><td><code>codegenome tui</code></td></tr>
         <tr><td>Export HTML</td><td><code>codegenome export --format html --path .</code></td></tr>
-        <tr><td>Live watch + UI</td><td><code>codegenome evolve --live .</code></td></tr>
+        <tr><td>Live watch + UI</td><td><code>codegenome evolve --live --lan .</code></td></tr>
         <tr><td>Agent rules</td><td><code>codegenome rules --client all .</code></td></tr>
         <tr><td>MCP (stdio)</td><td><code>codegenome mcp-start</code></td></tr>
       </tbody>

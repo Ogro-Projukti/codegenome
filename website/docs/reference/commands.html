@@ -50,18 +50,30 @@ codegenome analyze /home/dev/my-app</pre></div>
 codegenome export --format obsidian --path .</pre></div>
 
   <h2 id="mcp-start">mcp-start</h2>
-  <p>Start MCP server with stdio transport for the workspace database.</p>
-  <div class="doc-code-block"><pre>codegenome mcp-start [--path PATH]</pre></div>
-  <p>For HTTP on port 7331, use <a href="mcp.html">MCP server</a> or legacy <code>--mcp</code> flag.</p>
+  <p>Start MCP server with stdio or HTTP transport for the workspace database.</p>
+  <div class="doc-code-block"><pre>codegenome mcp-start [--path PATH] [--transport TRANSPORT] [--port PORT] [--lan]</pre></div>
+  <div class="doc-table-wrap">
+    <table>
+      <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--path</code></td><td><code>.</code></td><td>Workspace directory to host</td></tr>
+        <tr><td><code>--transport</code></td><td><code>stdio</code></td><td>Transport method: <code>stdio</code> or <code>http</code></td></tr>
+        <tr><td><code>--port</code></td><td><code>7331</code></td><td>HTTP port to bind (if using http)</td></tr>
+        <tr><td><code>--lan</code></td><td>off</td><td>Bind HTTP to 0.0.0.0 for LAN access</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Note: <code>--lan</code> makes the MCP server available to other devices on the same network.</p>
 
   <h2 id="evolve">evolve</h2>
   <p>Initial build, optional WebSocket live mode, HTTP graph UI, file watcher for <code>.py</code> files.</p>
-  <div class="doc-code-block"><pre>codegenome evolve [--live] [PATH]</pre></div>
+  <div class="doc-code-block"><pre>codegenome evolve [--live] [--lan] [PATH]</pre></div>
   <div class="doc-table-wrap">
     <table>
       <thead><tr><th>Flag</th><th>Description</th></tr></thead>
       <tbody>
         <tr><td><code>--live</code></td><td>Enable WebSocket broadcast on <code>ws://127.0.0.1:8765</code></td></tr>
+        <tr><td><code>--lan</code></td><td>Share live graph over LAN (binds to <code>0.0.0.0</code>)</td></tr>
         <tr><td><code>PATH</code></td><td>Workspace (default <code>.</code>)</td></tr>
       </tbody>
     </table>

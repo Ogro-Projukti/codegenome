@@ -26,18 +26,21 @@
   </div>
   <p>Run this from a directory that already has a graph, or use the TUI controls to point at a workspace and trigger <code>analyze</code>.</p>
 
-  <h2 id="why-tui">Why use the TUI?</h2>
+  <h2 id="features">Features &amp; Controls</h2>
   <ul>
-    <li>Fast visual feedback without opening a browser</li>
-    <li>Keyboard-driven navigation for large graphs</li>
-    <li>Convenient for developers who live in the terminal</li>
+    <li><strong>Workspace Info Page:</strong> View tracked folders, file extensions, and discovered <code>.gitignore</code>/<code>.genomeignore</code> rules before running scans.</li>
+    <li><strong>Live Evolve Controls:</strong> Launch <strong>Live Evolve (Local)</strong> or <strong>Live Evolve (LAN)</strong> directly from the dashboard.</li>
+    <li><strong>MCP HTTP Modes:</strong> Start the MCP HTTP server bound to localhost only or expose it to your LAN with one click.</li>
+    <li>Fast visual feedback without opening a browser.</li>
+    <li>Keyboard-driven navigation for large graphs.</li>
   </ul>
 
   <h2 id="workflow">Suggested workflow</h2>
   <ol>
-    <li><code>codegenome analyze .</code> in your project</li>
-    <li><code>codegenome tui</code> from the same directory</li>
-    <li>Optionally start MCP or export from companion terminals</li>
+    <li><code>codegenome tui</code> in your project directory</li>
+    <li>Check the <strong>Workspace Info</strong> to verify your ignore patterns</li>
+    <li>Run <code>analyze</code> or trigger <strong>Live Evolve</strong> from the UI</li>
+    <li>Start MCP HTTP (Local or LAN) for your AI agents</li>
   </ol>
 
   <p>Requires the <code>textual</code> dependency (installed automatically with <code>codegenome</code>).</p>
