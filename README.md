@@ -32,14 +32,6 @@ As your AI agent (**Cursor, Claude Desktop, or custom MCP clients**) generates n
 ### 🧠 Codebase Intelligence & Graph Building
 Codegenome deeply understands your code. It parses your source files, incrementally builds a knowledge graph, and outputs structured intelligence. Whether you're querying for dependencies or analyzing churn, Codegenome provides the structural truth of your codebase.
 
-### ⚡ Live Graph Visualization & Watch Mode
-Keep your codebase intelligence fresh in real-time. As you write code, Codegenome watches your workspace and automatically updates the graph, so your agents and queries are never out of sync.
-
-<div align="center">
-  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/live-graph-1.png" alt="Live Graph Visualization" width="48%" />
-  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/live-graph-2.png" alt="Live Graph Detail" width="48%" />
-</div>
-
 ### 🖥️ Rich Terminal User Interface (TUI)
 Interact with your codebase's architecture and timeline effortlessly through our built-in terminal UI. Explore connections and insights without ever leaving your terminal. **For the best and most intuitive user experience (UX), we highly recommend using the TUI.**
 
@@ -49,7 +41,18 @@ codegenome tui
 ```
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/tui.png" alt="Codegenome TUI" width="80%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/new-v_014/tui-view-1-wp-set.png" alt="TUI Workspace Settings" width="48%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/new-v_014/tui-view-2-wp-info.png" alt="TUI Workspace Info" width="48%" />
+  <br />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/new-v_014/tui-main-panel.png" alt="TUI Main Panel" width="48%" />
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/new-v_014/tui-config.png" alt="TUI Configuration" width="48%" />
+</div>
+
+### ⚡ Live Graph Visualization & Watch Mode
+Keep your codebase intelligence fresh in real-time. As you write code, Codegenome watches your workspace and automatically updates the graph, so your agents and queries are never out of sync.
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/Ogro-Projukti/codegenome/main/assets/new-v_014/ai-chat-live-graph.png" alt="AI Chat Live Graph" width="80%" />
 </div>
 
 ### 🤖 Seamless AI Agent Integration via MCP
