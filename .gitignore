@@ -12,9 +12,9 @@ dist/
 build/
 *.spec
 
-# Watcher runtime artifacts
+# CodeGenome runtime artifacts
 .genome/
-watcher.db
+codegenome.db
 
 # OS / IDE
 .DS_Store

@@ -18,7 +18,7 @@ python -m codegenome --workspace . --build --mcp --watch
 
 # Terminal 2: install client config
 python -m codegenome.installer \
-  --db-path "$(pwd)/.genome/watcher.db" \
+  --db-path "$(pwd)/.genome/codegenome.db" \
   --client cursor \
   --transport http \
   --host 127.0.0.1 \
@@ -43,7 +43,7 @@ Or configure clients to run the module directly:
 
 ```bash
 python -m codegenome.mcp_server \
-  --db-path ./.genome/watcher.db \
+  --db-path ./.genome/codegenome.db \
   --transport stdio
 ```
 
@@ -56,14 +56,14 @@ python -m codegenome.mcp_server --help
 
 # HTTP
 python -m codegenome.mcp_server \
-  --db-path ./.genome/watcher.db \
+  --db-path ./.genome/codegenome.db \
   --host 127.0.0.1 \
   --port 7331 \
   --transport http
 
 # Stdio
 python -m codegenome.mcp_server \
-  --db-path ./.genome/watcher.db \
+  --db-path ./.genome/codegenome.db \
   --transport stdio
 ```
 
@@ -75,7 +75,7 @@ python -m codegenome.installer --help
 
 | Flag | Description |
 |------|-------------|
-| `--db-path PATH` | Absolute path to `.genome/watcher.db` |
+| `--db-path PATH` | Absolute path to `.genome/codegenome.db` |
 | `--python PATH` | Python executable for stdio transport |
 | `--transport stdio\|http` | Config transport mode |
 | `--host HOST` | HTTP host in config |
@@ -101,12 +101,12 @@ Always use **absolute paths** for `--db-path`.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `WATCHER_MCP_DB_PATH` | `test.db` | Database path |
-| `WATCHER_MCP_HOST` | `127.0.0.1` | HTTP bind host |
-| `WATCHER_MCP_PORT` | `7331` | HTTP bind port |
-| `WATCHER_MCP_TRANSPORT` | `http` | `http` or `stdio` |
-| `WATCHER_MCP_TIMEOUT` | `30` | Tool timeout (seconds) |
-| `WATCHER_MCP_LOG_LEVEL` | `INFO` | Log level |
+| `CODEGENOME_MCP_DB_PATH` | `test.db` | Database path |
+| `CODEGENOME_MCP_HOST` | `127.0.0.1` | HTTP bind host |
+| `CODEGENOME_MCP_PORT` | `7331` | HTTP bind port |
+| `CODEGENOME_MCP_TRANSPORT` | `http` | `http` or `stdio` |
+| `CODEGENOME_MCP_TIMEOUT` | `30` | Tool timeout (seconds) |
+| `CODEGENOME_MCP_LOG_LEVEL` | `INFO` | Log level |
 
 ## Health check
 
@@ -129,8 +129,8 @@ Manual Cursor rule install:
 
 ```bash
 mkdir -p .cursor/rules
-sed 's/{{MCP_PORT}}/7331/g' extensions/templates/watcher-knowledge-graph.mdc \
-  > .cursor/rules/watcher-knowledge-graph.mdc
+sed 's/{{MCP_PORT}}/7331/g' extensions/templates/codegenome-knowledge-graph.mdc \
+  > .cursor/rules/codegenome-knowledge-graph.mdc
 ```
 
 On Windows PowerShell, copy the template and replace `{{MCP_PORT}}` with `7331` manually or use your editor's find-and-replace.
@@ -157,7 +157,7 @@ codegenome analyze .
 |---------|----------|
 | Connection refused | Run HTTP MCP (`python -m codegenome --mcp --build --watch`) or `mcp_server`; ensure the graph was built |
 | Port 7331 in use | Stop the other instance or run `mcp_server --port 7332` and update client config |
-| Empty tool results | Run `codegenome analyze .` first; confirm `.genome/watcher.db` exists |
+| Empty tool results | Run `codegenome analyze .` first; confirm `.genome/codegenome.db` exists |
 | Client not using MCP | Restart the client after `installer`; verify the config file path |
 | Stdio vs HTTP mismatch | Match `--transport` in `installer` with how the server is started |
 

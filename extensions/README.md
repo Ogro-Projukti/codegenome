@@ -6,7 +6,7 @@ This folder holds **editor and agent integration assets** that ship with the Cod
 
 | Path | Purpose |
 |------|---------|
-| `templates/watcher-knowledge-graph.mdc` | Cursor rule template — teaches agents to use Codegenome MCP tools |
+| `templates/codegenome-knowledge-graph.mdc` | Cursor rule template — teaches agents to use Codegenome MCP tools |
 | `templates/copilot-instructions.md` | GitHub Copilot instructions template |
 | `templates/claude-instructions.md` | Claude-oriented instructions template |
 
@@ -32,7 +32,7 @@ Write MCP server entries into AI client config files:
 
 ```bash
 python -m codegenome.installer \
-  --db-path /absolute/path/to/project/.genome/watcher.db \
+  --db-path /absolute/path/to/project/.genome/codegenome.db \
   --client cursor \
   --transport http \
   --host 127.0.0.1 \
@@ -47,8 +47,8 @@ See [MCP integration](../docs/mcp-integration.md) for transport modes, health ch
 
 ```bash
 mkdir -p .cursor/rules
-sed 's/{{MCP_PORT}}/7331/g' extensions/templates/watcher-knowledge-graph.mdc \
-  > .cursor/rules/watcher-knowledge-graph.mdc
+sed 's/{{MCP_PORT}}/7331/g' extensions/templates/codegenome-knowledge-graph.mdc \
+  > .cursor/rules/codegenome-knowledge-graph.mdc
 ```
 
 Restart Cursor after installing MCP config or rules.

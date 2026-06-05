@@ -1,4 +1,4 @@
-"""SQLite-backed graph snapshot and delta timeline for Watcher.
+"""SQLite-backed graph snapshot and delta timeline for CodeGenome.
 
 This module provides the GraphTimeline class, which records full dependency
 graphs into a SQLite database, allowing for historical analysis and

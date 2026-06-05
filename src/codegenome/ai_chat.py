@@ -102,7 +102,7 @@ CONTEXT_PROFILES = {
 }
 DEFAULT_HTTP_HEADERS = {
     "Accept": "application/json",
-    "User-Agent": "CodeGenome/0.1 (+https://github.com/watcher-dev/codegenome)",
+    "User-Agent": "CodeGenome/0.1 (+https://github.com/codegenome-dev/codegenome)",
 }
 
 

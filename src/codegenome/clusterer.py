@@ -1,4 +1,4 @@
-"""Leiden community detection and bridge-node analysis for Watcher graphs."""
+"""Leiden community detection and bridge-node analysis for CodeGenome graphs."""
 
 from __future__ import annotations
 

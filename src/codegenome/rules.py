@@ -1,4 +1,4 @@
-"""Generate Watcher AI agent rules and instructions."""
+"""Generate CodeGenome AI agent rules and instructions."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def rule_targets(workspace: Path | None = None) -> list[RuleTarget]:
         RuleTarget(
             key="cursor",
             label="Cursor",
-            output_path=workspace / ".cursor" / "rules" / "watcher-knowledge-graph.mdc",
+            output_path=workspace / ".cursor" / "rules" / "codegenome-knowledge-graph.mdc",
             template_name="cursor-rules.mdc",
         ),
         RuleTarget(

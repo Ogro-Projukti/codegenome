@@ -13,7 +13,7 @@ Both operate on a **workspace** (project root). By default that is the current d
 
 | Path | Purpose |
 |------|---------|
-| `.genome/watcher.db` | Timeline snapshots (SQLite) |
+| `.genome/codegenome.db` | Timeline snapshots (SQLite) |
 | `.genome/graph.json` | Latest graph |
 | `.genome/exports/` | HTML, Markdown, GraphML, etc. |
 | `.genome/scan_cache.db` | Incremental scan cache |
@@ -240,7 +240,7 @@ Terminal 2:
 
 ```bash
 python -m codegenome.installer \
-  --db-path "$(pwd)/.genome/watcher.db" \
+  --db-path "$(pwd)/.genome/codegenome.db" \
   --client cursor \
   --transport http
 codegenome rules --client cursor .

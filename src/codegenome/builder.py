@@ -1,4 +1,4 @@
-"""NetworkX graph builder for Watcher scan and parse results."""
+"""NetworkX graph builder for CodeGenome scan and parse results."""
 
 from __future__ import annotations
 

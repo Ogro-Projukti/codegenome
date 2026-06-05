@@ -14,7 +14,7 @@ from codegenome.workspace_metrics import (
 )
 
 if TYPE_CHECKING:
-    from codegenome.watcher import WatcherEngine
+    from codegenome.core import CodeGenomeEngine
 
 LOG = logging.getLogger(__name__)
 
@@ -24,13 +24,13 @@ class LiveGraphMonitor:
 
     def __init__(
         self,
-        engine: WatcherEngine,
+        engine: CodeGenomeEngine,
         poll_interval_seconds: float,
     ) -> None:
         """Initialize the LiveGraphMonitor.
 
         Args:
-            engine (WatcherEngine): The engine used for checking and rebuilding the graph.
+            engine (CodeGenomeEngine): The engine used for checking and rebuilding the graph.
             poll_interval_seconds (float): Interval in seconds between polls.
         """
         self._engine = engine
@@ -52,7 +52,7 @@ class LiveGraphMonitor:
         )
         self._thread = threading.Thread(
             target=self._poll_loop,
-            name="watcher-live-graph",
+            name="codegenome-live-graph",
             daemon=True,
         )
         self._thread.start()

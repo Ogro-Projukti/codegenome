@@ -1,4 +1,4 @@
-"""WatcherEngine orchestration for builds, watching, MCP, and exports."""
+"""CodeGenomeEngine orchestration for builds, watching, MCP, and exports."""
 
 from __future__ import annotations
 
@@ -35,8 +35,8 @@ PARSE_PROGRESS_INTERVAL = 50
 
 
 @dataclass
-class WatcherConfig:
-    """Configuration for WatcherEngine."""
+class CodeGenomeConfig:
+    """Configuration for CodeGenomeEngine."""
 
     workspace: Path
     db_path: Path | None = None
@@ -53,7 +53,7 @@ class WatcherConfig:
 
 @dataclass
 class BuildResult:
-    """Container for the output of a WatcherEngine build or update."""
+    """Container for the output of a CodeGenomeEngine build or update."""
 
     graph: nx.DiGraph
     report: IntelligenceReport
@@ -64,11 +64,11 @@ class BuildResult:
 class _RebuildHandler(FileSystemEventHandler):
     """File system event handler to trigger incremental rebuilds with debouncing."""
 
-    def __init__(self, engine: WatcherEngine, debounce_seconds: float) -> None:
+    def __init__(self, engine: CodeGenomeEngine, debounce_seconds: float) -> None:
         """Initialize the _RebuildHandler.
 
         Args:
-            engine (WatcherEngine): The engine to invoke rebuilds on.
+            engine (CodeGenomeEngine): The engine to invoke rebuilds on.
             debounce_seconds (float): Delay in seconds before triggering a rebuild.
         """
         self._engine = engine
@@ -108,17 +108,17 @@ class _RebuildHandler(FileSystemEventHandler):
         )
         try:
             self._engine.rebuild_incremental()
-        except Exception:  # noqa: BLE001 - keep watcher alive
+        except Exception:  # noqa: BLE001 - keep codegenome alive
             LOG.exception("Incremental rebuild failed")
 
 
 class SurgicalUpdateHandler(FileSystemEventHandler):
     """Surgically update the graph on individual file changes."""
-    def __init__(self, engine: WatcherEngine, live_server=None) -> None:
+    def __init__(self, engine: CodeGenomeEngine, live_server=None) -> None:
         """Initialize the SurgicalUpdateHandler.
 
         Args:
-            engine (WatcherEngine): The engine performing graph updates.
+            engine (CodeGenomeEngine): The engine performing graph updates.
             live_server (LiveGraphServer | None, optional): Server for real-time broadcasts. Defaults to None.
         """
         self._engine = engine
@@ -168,19 +168,19 @@ class SurgicalUpdateHandler(FileSystemEventHandler):
                 LOG.exception(f"Surgical update failed for {event.src_path}")
 
 
-class WatcherEngine:
+class CodeGenomeEngine:
     """Coordinate scanning, graph building, exports, watching, and MCP startup."""
 
-    def __init__(self, config: WatcherConfig) -> None:
-        """Initialize the WatcherEngine.
+    def __init__(self, config: CodeGenomeConfig) -> None:
+        """Initialize the CodeGenomeEngine.
 
         Args:
-            config (WatcherConfig): The configuration defining paths and options.
+            config (CodeGenomeConfig): The configuration defining paths and options.
         """
         self.config = config
         self.workspace = config.workspace.resolve()
         self.genome_dir = self.workspace / ".genome"
-        self.db_path = (config.db_path or self.genome_dir / "watcher.db").resolve()
+        self.db_path = (config.db_path or self.genome_dir / "codegenome.db").resolve()
         self.export_dir = (config.export_dir or self.genome_dir / "exports").resolve()
         self.graph_json_path = (
             config.graph_json_path or self.genome_dir / "graph.json"
@@ -479,7 +479,7 @@ class WatcherEngine:
                 sys.stderr.write(line)
                 sys.stderr.flush()
 
-        thread = threading.Thread(target=forward, name="watcher-mcp-stderr", daemon=True)
+        thread = threading.Thread(target=forward, name="codegenome-mcp-stderr", daemon=True)
         thread.start()
 
     def stop_mcp(self) -> None:

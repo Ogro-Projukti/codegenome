@@ -1,4 +1,4 @@
-"""Install Watcher MCP server configs for common AI coding clients."""
+"""Install CodeGenome MCP server configs for common AI coding clients."""
 
 from __future__ import annotations
 
@@ -257,10 +257,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     Returns:
         argparse.Namespace: The parsed command-line arguments.
     """
-    parser = argparse.ArgumentParser(description="Install Watcher MCP configs for AI clients")
+    parser = argparse.ArgumentParser(description="Install CodeGenome MCP configs for AI clients")
     parser.add_argument(
         "--db-path",
-        default=os.getenv("WATCHER_MCP_DB_PATH", "test.db"),
+        default=os.getenv("CODEGENOME_MCP_DB_PATH", "test.db"),
         help="Timeline database path passed to the MCP server",
     )
     parser.add_argument(
@@ -271,18 +271,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--transport",
         choices=("stdio", "http"),
-        default=os.getenv("WATCHER_MCP_TRANSPORT", "stdio"),
+        default=os.getenv("CODEGENOME_MCP_TRANSPORT", "stdio"),
         help="Transport mode written into client configs",
     )
     parser.add_argument(
         "--host",
-        default=os.getenv("WATCHER_MCP_HOST", "127.0.0.1"),
+        default=os.getenv("CODEGENOME_MCP_HOST", "127.0.0.1"),
         help="Host used for HTTP transport configs",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("WATCHER_MCP_PORT", "7331")),
+        default=int(os.getenv("CODEGENOME_MCP_PORT", "7331")),
         help="Port used for HTTP transport configs",
     )
     parser.add_argument(

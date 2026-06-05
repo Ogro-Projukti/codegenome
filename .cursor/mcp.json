@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "codegenome": {
+      "command": "codegenome",
+      "args": [
+        "mcp-start"
+      ]
+    }
+  }
+}

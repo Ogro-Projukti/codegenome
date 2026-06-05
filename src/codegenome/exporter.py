@@ -1,4 +1,4 @@
-"""Export Watcher graphs to JSON, HTML, GraphML, Cypher, Markdown, and Obsidian."""
+"""Export CodeGenome graphs to JSON, HTML, GraphML, Cypher, Markdown, and Obsidian."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ class GraphStatistics:
 
 @dataclass
 class GraphExporter:
-    """Serialize Watcher graphs and intelligence into multiple formats.
+    """Serialize CodeGenome graphs and intelligence into multiple formats.
 
     Attributes:
         graph (Graph): The graph instance to be exported.
@@ -212,7 +212,7 @@ class GraphExporter:
             Path: The path to the successfully created Cypher file.
         """
         lines = [
-            "// Watcher graph export for Neo4j",
+            "// CodeGenome graph export for Neo4j",
             f"// workspace: {self.workspace_name}",
             "",
         ]
@@ -294,7 +294,7 @@ class GraphExporter:
             )
 
         index_lines = [
-            "# Watcher Graph Vault",
+            "# CodeGenome Graph Vault",
             "",
             f"Workspace: `{self.workspace_name}`",
             "",
@@ -313,7 +313,7 @@ class GraphExporter:
                     f"- Circular dependency groups: {len(self.report.circular_dependencies)}",
                 ]
             )
-        vault_root.joinpath("Watcher Index.md").write_text(
+        vault_root.joinpath("CodeGenome Index.md").write_text(
             "\n".join(index_lines) + "\n",
             encoding="utf-8",
         )

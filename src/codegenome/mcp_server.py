@@ -1,4 +1,4 @@
-"""FastMCP server exposing Watcher graph tools over localhost HTTP or stdio."""
+"""FastMCP server exposing CodeGenome graph tools over localhost HTTP or stdio."""
 
 from __future__ import annotations
 
@@ -31,12 +31,12 @@ DEFAULT_PORT = 7331
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_TRANSPORT: Literal["http", "stdio"] = "http"
 
-ENV_HOST = "WATCHER_MCP_HOST"
-ENV_PORT = "WATCHER_MCP_PORT"
-ENV_DB_PATH = "WATCHER_MCP_DB_PATH"
-ENV_TIMEOUT = "WATCHER_MCP_TIMEOUT"
-ENV_LOG_LEVEL = "WATCHER_MCP_LOG_LEVEL"
-ENV_TRANSPORT = "WATCHER_MCP_TRANSPORT"
+ENV_HOST = "CODEGENOME_MCP_HOST"
+ENV_PORT = "CODEGENOME_MCP_PORT"
+ENV_DB_PATH = "CODEGENOME_MCP_DB_PATH"
+ENV_TIMEOUT = "CODEGENOME_MCP_TIMEOUT"
+ENV_LOG_LEVEL = "CODEGENOME_MCP_LOG_LEVEL"
+ENV_TRANSPORT = "CODEGENOME_MCP_TRANSPORT"
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -204,7 +204,7 @@ class GraphService:
         self.config = config
         self._lock = threading.RLock()
         self._store = GraphStore(config.db_path)
-        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="watcher-mcp")
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="codegenome-mcp")
 
     @property
     def store(self) -> GraphStore:
@@ -470,7 +470,7 @@ def create_server(
         summary = service.run(service.store.summary)
         payload = {
             "status": "ok",
-            "service": "watcher-mcp",
+            "service": "codegenome-mcp",
             "version": __version__,
             "db_path": str(service.config.db_path),
             "snapshot_id": summary.snapshot_id,

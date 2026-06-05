@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 import click
 
-from codegenome.watcher import WatcherEngine, WatcherConfig
+from codegenome.core import CodeGenomeEngine, CodeGenomeConfig
 
 @click.group()
 def cli():
@@ -21,8 +21,8 @@ def analyze(path: str):
     """
     click.echo(f"Analyzing workspace at {path}...")
     workspace = Path(path).resolve()
-    config = WatcherConfig(workspace=workspace, export_formats=("json",))
-    engine = WatcherEngine(config)
+    config = CodeGenomeConfig(workspace=workspace, export_formats=("json",))
+    engine = CodeGenomeEngine(config)
 
     def on_progress(message: str) -> None:
         click.echo(message)
@@ -59,12 +59,12 @@ def export(export_format: str, path: str):
         path (str): The workspace directory path to export from.
     """
     workspace = Path(path).resolve()
-    config = WatcherConfig(workspace=workspace)
-    engine = WatcherEngine(config)
+    config = CodeGenomeConfig(workspace=workspace)
+    engine = CodeGenomeEngine(config)
     
     try:
         # Check if the graph exists. If not loaded, it means it hasn't been analyzed.
-        # engine._load_existing_graph() is called in WatcherEngine.__init__.
+        # engine._load_existing_graph() is called in CodeGenomeEngine.__init__.
         # Alternatively, we can check if the graph has nodes.
         if engine.builder.graph.number_of_nodes() == 0:
             click.echo("Error: No graph found. Please run 'codegenome analyze' first before exporting.", err=True)
@@ -119,8 +119,8 @@ def mcp_start(path: str, transport: str, port: int, lan: bool):
         lan (bool): Whether to expose HTTP transport on the local network.
     """
     workspace = Path(path).resolve()
-    config = WatcherConfig(workspace=workspace)
-    engine = WatcherEngine(config)
+    config = CodeGenomeConfig(workspace=workspace)
+    engine = CodeGenomeEngine(config)
     db_path = engine.db_path
     engine.close()  # Close the engine since the MCP server process will open its own connection
     
@@ -159,11 +159,11 @@ def evolve(path: str, live: bool, lan: bool):
     from socketserver import ThreadingTCPServer
     from watchdog.observers import Observer
     from codegenome.ai_chat import AIChatError, chat_completion, load_models, settings_payload
-    from codegenome.watcher import WatcherConfig, WatcherEngine, SurgicalUpdateHandler
+    from codegenome.core import CodeGenomeConfig, CodeGenomeEngine, SurgicalUpdateHandler
 
     workspace = Path(path).resolve()
-    config = WatcherConfig(workspace=workspace, export_formats=("json", "html"))
-    engine = WatcherEngine(config)
+    config = CodeGenomeConfig(workspace=workspace, export_formats=("json", "html"))
+    engine = CodeGenomeEngine(config)
     
     click.echo(f"Running initial build for {workspace}...")
     engine.build(full=False)

@@ -1,4 +1,4 @@
-"""CLI entry point for Watcher."""
+"""CLI entry point for CodeGenome."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import sys
 from pathlib import Path
 
 from codegenome.exporter import SUPPORTED_FORMATS
-from codegenome.watcher import WatcherConfig, WatcherEngine
+from codegenome.core import CodeGenomeConfig, CodeGenomeEngine
 
 LOG = logging.getLogger("codegenome")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse command line arguments for the Watcher CLI.
+    """Parse command line arguments for the CodeGenome CLI.
 
     Args:
         argv (list[str] | None, optional): List of command line arguments. Defaults to None,
@@ -24,7 +24,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     Returns:
         argparse.Namespace: The parsed command line arguments.
     """
-    parser = argparse.ArgumentParser(description="Watcher CLI — local codebase knowledge graph")
+    parser = argparse.ArgumentParser(description="CodeGenome CLI — local codebase knowledge graph")
     parser.add_argument(
         "--workspace",
         default=".",
@@ -78,7 +78,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--db-path",
         default=None,
-        help="Timeline SQLite database path (default: .genome/watcher.db)",
+        help="Timeline SQLite database path (default: .genome/codegenome.db)",
     )
     parser.add_argument(
         "--mcp",
@@ -149,7 +149,7 @@ def run_timeline_query(args: argparse.Namespace) -> int:
     from codegenome.graph_store import GraphStore, GraphStoreError
 
     workspace = Path(args.workspace).resolve()
-    db_path = Path(args.db_path).resolve() if args.db_path else workspace / ".genome" / "watcher.db"
+    db_path = Path(args.db_path).resolve() if args.db_path else workspace / ".genome" / "codegenome.db"
 
     store = GraphStore(db_path)
     try:
@@ -186,7 +186,7 @@ def run_timeline_query(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Main entry point for the codegenome Watcher CLI.
+    """Main entry point for the codegenome CodeGenome CLI.
 
     Args:
         argv (list[str] | None, optional): List of command line arguments. Defaults to None.
@@ -232,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Nothing to do. Pass --build, --watch, and/or --live-graph.", file=sys.stderr)
         return 1
 
-    config = WatcherConfig(
+    config = CodeGenomeConfig(
         workspace=workspace,
         db_path=Path(args.db_path).resolve() if args.db_path else None,
         export_formats=tuple(fmt.lower() for fmt in args.export),
@@ -241,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
         live_graph=args.live_graph,
         live_graph_poll_seconds=max(1.0, float(args.live_graph_interval)),
     )
-    engine = WatcherEngine(config)
+    engine = CodeGenomeEngine(config)
 
     try:
         if args.build or args.watch or args.live_graph:
