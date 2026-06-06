@@ -21,6 +21,7 @@
       <div class="stat"><span id="stat-genes">0</span><label>Genes</label></div>
       <div class="stat"><span id="stat-snapshot">&mdash;</span><label>Snapshot</label></div>
     </div>
+    <a id="btn-graph-explorer" class="graph-link" href="graph.html" title="Return to the legacy graph explorer">Graph Explorer</a>
     <div id="live-badge" class="live-badge offline" title="Real-time connection status">
       <span class="dot"></span><span class="live-text">Offline</span>
     </div>
@@ -32,12 +33,58 @@
 
   <main id="grid" class="grid" aria-live="polite"></main>
 
+  <section id="structure-view" class="structure-view hidden" aria-label="Structural containment map">
+    <div class="structure-toolbar">
+      <div class="structure-title-block">
+        <h2 id="structure-module-title">Module</h2>
+        <p id="structure-module-path" class="structure-sub"></p>
+      </div>
+      <div class="structure-stats">
+        <span id="structure-file-total">0</span> files
+        <span class="structure-stat-sep">&middot;</span>
+        <span id="structure-visible-files">0</span> shown
+      </div>
+      <p class="structure-hint">Click a gene on the helix to jump here. Live edits append new codons to visible files.</p>
+    </div>
+    <div id="structure-root" class="structure-root"></div>
+  </section>
+
+  <section id="helix-view" class="helix-view hidden" aria-label="DNA helix module view">
+    <div class="helix-toolbar">
+      <div class="helix-title-block">
+        <h2 id="helix-module-title">Module</h2>
+        <p id="helix-module-path" class="helix-sub"></p>
+      </div>
+      <div class="helix-stats">
+        <span id="helix-node-count">0</span> bases
+        <span class="helix-stat-sep">&middot;</span>
+        <span id="helix-health">—</span> health
+        <span class="helix-stat-sep">&middot;</span>
+        <span id="helix-alert-count">0</span> alerts
+      </div>
+      <div class="helix-legend" aria-hidden="true">
+        <span class="legend-item a">A</span>
+        <span class="legend-item a-star" title="Abstract class / interface">A*</span>
+        <span class="legend-item t">T</span>
+        <span class="legend-item g">G</span>
+        <span class="legend-item c">C</span>
+        <span class="legend-item alert">G!</span>
+      </div>
+    </div>
+    <div id="helix-scroll" class="helix-scroll">
+      <canvas id="helix-canvas" class="helix-canvas"></canvas>
+      <div id="helix-spacer" class="helix-spacer"></div>
+    </div>
+  </section>
+
   <div id="empty-state" class="empty-state hidden">
     <p>No genome data yet. Run <code>codegenome analyze</code> or start <code>codegenome evolve --live</code>.</p>
   </div>
 
   <div id="toast" class="toast" role="status"></div>
 
+  <script src="helix.js"></script>
+  <script src="structure.js"></script>
   <script src="karyotype.js"></script>
 </body>
 </html>

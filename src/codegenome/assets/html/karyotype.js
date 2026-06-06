@@ -8,19 +8,32 @@
     '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#56b6f2',
   ];
   const UNGROUPED_KEY = '__ungrouped__';
-  const BASE_LETTERS = ['A', 'T', 'G', 'C'];
+  const BASE_LETTERS = ['A', 'A*', 'T', 'G', 'C'];
   const PULSE_MS = 950;
   const RECONNECT_MS = 2500;
 
   const params = new URLSearchParams(window.location.search);
   const liveMode = params.get('live') === '1';
   const wsPort = params.get('ws') || '8765';
+  const graphExplorerLink = document.getElementById('btn-graph-explorer');
+  if (graphExplorerLink && window.location.search) {
+    graphExplorerLink.href = `graph.html${window.location.search}`;
+  }
 
   /** @type {Map<string, object>} module_id -> module summary */
   const modules = new Map();
-  /** @type {{ level: 'communities' | 'modules', communityKey: string | null }} */
-  const view = { level: 'communities', communityKey: null };
+  /** @type {{ level: 'communities' | 'modules' | 'helix' | 'structure', communityKey: string | null, moduleId: string | null }} */
+  const view = { level: 'communities', communityKey: null, moduleId: null };
   let snapshotId = null;
+  /** @type {WebSocket | null} */
+  let socket = null;
+  /** @type {InstanceType<typeof window.HelixRenderer> | null} */
+  let helixRenderer = null;
+  let helixLoading = false;
+  /** @type {InstanceType<typeof window.StructureMap> | null} */
+  let structureMap = null;
+  let structureLoading = false;
+  const HELIX_PITCH = 16;
 
   const els = {
     grid: document.getElementById('grid'),
@@ -34,6 +47,21 @@
     statModules: document.getElementById('stat-modules'),
     statGenes: document.getElementById('stat-genes'),
     statSnapshot: document.getElementById('stat-snapshot'),
+    helixView: document.getElementById('helix-view'),
+    helixScroll: document.getElementById('helix-scroll'),
+    helixCanvas: document.getElementById('helix-canvas'),
+    helixSpacer: document.getElementById('helix-spacer'),
+    helixTitle: document.getElementById('helix-module-title'),
+    helixPath: document.getElementById('helix-module-path'),
+    helixNodeCount: document.getElementById('helix-node-count'),
+    helixHealth: document.getElementById('helix-health'),
+    helixAlertCount: document.getElementById('helix-alert-count'),
+    structureView: document.getElementById('structure-view'),
+    structureRoot: document.getElementById('structure-root'),
+    structureTitle: document.getElementById('structure-module-title'),
+    structurePath: document.getElementById('structure-module-path'),
+    structureFileTotal: document.getElementById('structure-file-total'),
+    structureVisibleFiles: document.getElementById('structure-visible-files'),
   };
 
   // ---------------------------------------------------------------- helpers
@@ -81,7 +109,7 @@
   }
 
   function aggregateCommunity(members) {
-    const agg = { genes: 0, bases: { A: 0, T: 0, G: 0, C: 0 }, healthSum: 0 };
+    const agg = { genes: 0, bases: { A: 0, 'A*': 0, T: 0, G: 0, C: 0 }, healthSum: 0 };
     for (const module of members) {
       agg.genes += module.gene_count || 0;
       agg.healthSum += module.health_score || 0;
@@ -104,11 +132,13 @@
   function basesMarkup(counts) {
     return (
       '<div class="bases">' +
-      BASE_LETTERS.map(
-        (letter) =>
-          `<div class="base ${letter}"><span class="letter">${letter}</span>` +
-          `<span class="count" data-base="${letter}">${counts[letter] || 0}</span></div>`,
-      ).join('') +
+      BASE_LETTERS.map((letter) => {
+        const cssClass = letter === 'A*' ? 'a-star' : letter;
+        return (
+          `<div class="base ${cssClass}"><span class="letter">${letter}</span>` +
+          `<span class="count" data-base="${letter}">${counts[letter] || 0}</span></div>`
+        );
+      }).join('') +
       '</div>'
     );
   }
@@ -170,8 +200,16 @@
       basesMarkup(counts) +
       healthMarkup(module.health_score || 0) +
       `<div class="card-foot"><span><strong class="gene-count">${module.gene_count || 0}</strong> genes</span></div>`;
+    card.addEventListener('click', () => zoomIntoHelix(module.module_id));
     requestAnimationFrame(() => paintHealth(card, module.health_score || 0));
     return card;
+  }
+
+  function encodeModulePath(moduleId) {
+    return String(moduleId)
+      .split('/')
+      .map((part) => encodeURIComponent(part))
+      .join('/');
   }
 
   function renderBreadcrumb() {
@@ -182,7 +220,35 @@
     root.textContent = 'Genome';
     root.addEventListener('click', showCommunities);
     els.breadcrumb.appendChild(root);
-    if (view.level === 'modules' && view.communityKey !== null) {
+    if (view.communityKey !== null && view.level !== 'communities') {
+      const sep = document.createElement('span');
+      sep.className = 'crumb-sep';
+      sep.textContent = '/';
+      els.breadcrumb.appendChild(sep);
+      const communityCrumb = document.createElement('button');
+      communityCrumb.type = 'button';
+      communityCrumb.className = 'crumb' + (view.level === 'modules' ? ' active' : '');
+      communityCrumb.textContent = communityLabel(view.communityKey);
+      communityCrumb.addEventListener('click', () => {
+        if (view.level !== 'modules') showModules(view.communityKey);
+      });
+      els.breadcrumb.appendChild(communityCrumb);
+    }
+    if ((view.level === 'helix' || view.level === 'structure') && view.moduleId) {
+      const sep = document.createElement('span');
+      sep.className = 'crumb-sep';
+      sep.textContent = '/';
+      els.breadcrumb.appendChild(sep);
+      const moduleCrumb = document.createElement('button');
+      moduleCrumb.type = 'button';
+      moduleCrumb.className = 'crumb' + (view.level === 'helix' ? ' active' : '');
+      moduleCrumb.textContent = shortModuleName(view.moduleId);
+      moduleCrumb.addEventListener('click', () => {
+        if (view.level !== 'helix') zoomIntoHelix(view.moduleId);
+      });
+      els.breadcrumb.appendChild(moduleCrumb);
+    }
+    if (view.level === 'structure' && view.moduleId) {
       const sep = document.createElement('span');
       sep.className = 'crumb-sep';
       sep.textContent = '/';
@@ -190,7 +256,7 @@
       const leaf = document.createElement('button');
       leaf.type = 'button';
       leaf.className = 'crumb active';
-      leaf.textContent = communityLabel(view.communityKey);
+      leaf.textContent = 'Structure';
       els.breadcrumb.appendChild(leaf);
     }
   }
@@ -208,6 +274,29 @@
   function render() {
     renderBreadcrumb();
     renderStats();
+
+    if (view.level === 'helix') {
+      els.grid.classList.add('hidden');
+      els.helixView.classList.remove('hidden');
+      els.structureView.classList.add('hidden');
+      els.empty.classList.add('hidden');
+      return;
+    }
+
+    if (view.level === 'structure') {
+      els.grid.classList.add('hidden');
+      els.helixView.classList.add('hidden');
+      els.structureView.classList.remove('hidden');
+      els.empty.classList.add('hidden');
+      stopHelix();
+      return;
+    }
+
+    els.grid.classList.remove('hidden');
+    els.helixView.classList.add('hidden');
+    els.structureView.classList.add('hidden');
+    stopHelix();
+    stopStructure();
     els.grid.innerHTML = '';
 
     if (modules.size === 0) {
@@ -239,13 +328,189 @@
   function showCommunities() {
     view.level = 'communities';
     view.communityKey = null;
+    view.moduleId = null;
+    sendSubscription('karyotype');
+    render();
+  }
+
+  function showModules(key) {
+    view.level = 'modules';
+    view.communityKey = key;
+    view.moduleId = null;
+    sendSubscription('karyotype');
     render();
   }
 
   function zoomIntoCommunity(key) {
-    view.level = 'modules';
-    view.communityKey = key;
-    render();
+    showModules(key);
+  }
+
+  function stopHelix() {
+    if (helixRenderer) {
+      helixRenderer.destroy();
+      helixRenderer = null;
+    }
+  }
+
+  function paintHelixMeta(moduleId, graph) {
+    const module = modules.get(moduleId);
+    els.helixTitle.textContent = shortModuleName(moduleId);
+    els.helixPath.textContent = moduleId;
+    els.helixNodeCount.textContent = String((graph.nodes || []).length);
+    const health = typeof graph.health_score === 'number' ? graph.health_score : module?.health_score || 0;
+    els.helixHealth.textContent = `${Math.round(health * 100)}%`;
+    const alertNodes = (graph.nodes || []).filter((node) => String(node.base) === 'G!').length;
+    const alertList = (graph.alerts || []).length;
+    els.helixAlertCount.textContent = String(Math.max(alertNodes, alertList));
+  }
+
+  async function loadHelixGraph(moduleId) {
+    const path = encodeModulePath(moduleId);
+    const res = await fetch(`/genome/${path}/graph`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  async function zoomIntoHelix(moduleId) {
+    if (helixLoading) return;
+    helixLoading = true;
+    try {
+      const graph = await loadHelixGraph(moduleId);
+      view.level = 'helix';
+      view.moduleId = moduleId;
+      if (view.communityKey === null) {
+        const module = modules.get(moduleId);
+        if (module) view.communityKey = communityKeyOf(module);
+      }
+      render();
+      paintHelixMeta(moduleId, graph);
+      stopHelix();
+      if (window.HelixRenderer) {
+        helixRenderer = new window.HelixRenderer(els.helixScroll, els.helixCanvas, els.helixSpacer);
+        helixRenderer.setData(graph);
+        helixRenderer.start();
+      }
+      sendSubscription('helix', moduleId);
+    } catch (err) {
+      console.error('Failed to load helix graph', err);
+      showToast(`Could not load helix: ${err.message}`);
+    } finally {
+      helixLoading = false;
+    }
+  }
+
+  async function refreshHelixGraph() {
+    if (view.level !== 'helix' || !view.moduleId || !helixRenderer) return;
+    try {
+      const graph = await loadHelixGraph(view.moduleId);
+      paintHelixMeta(view.moduleId, graph);
+      helixRenderer.setData(graph);
+    } catch (err) {
+      console.error('Helix refresh failed', err);
+    }
+  }
+
+  function stopStructure() {
+    if (structureMap) {
+      structureMap.destroy();
+      structureMap = null;
+    }
+  }
+
+  function paintStructureMeta(moduleId, tree) {
+    els.structureTitle.textContent = shortModuleName(moduleId);
+    els.structurePath.textContent = moduleId;
+    const total = (tree.files || []).length;
+    const shown = structureMap ? structureMap.renderedCount : Math.min(5, total);
+    els.structureFileTotal.textContent = String(total);
+    els.structureVisibleFiles.textContent = String(shown);
+  }
+
+  function updateStructureVisibleCount() {
+    if (!structureMap) return;
+    els.structureVisibleFiles.textContent = String(structureMap.renderedCount);
+  }
+
+  async function loadStructureTree(moduleId) {
+    const path = encodeModulePath(moduleId);
+    const res = await fetch(`/genome/${path}/structure`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  async function zoomIntoStructure(moduleId, focusFilePath) {
+    if (structureLoading) return;
+    structureLoading = true;
+    try {
+      const tree = await loadStructureTree(moduleId);
+      view.level = 'structure';
+      view.moduleId = moduleId;
+      if (view.communityKey === null) {
+        const module = modules.get(moduleId);
+        if (module) view.communityKey = communityKeyOf(module);
+      }
+      render();
+      stopStructure();
+      if (window.StructureMap) {
+        structureMap = new window.StructureMap(els.structureRoot, {
+          onLoadMore: updateStructureVisibleCount,
+        });
+        structureMap.setTree(tree, focusFilePath || null);
+        paintStructureMeta(moduleId, tree);
+      }
+      sendSubscription('structure', moduleId);
+    } catch (err) {
+      console.error('Failed to load structure tree', err);
+      showToast(`Could not load structure: ${err.message}`);
+    } finally {
+      structureLoading = false;
+    }
+  }
+
+  function filePathsFromGraphDelta(delta) {
+    const paths = new Set();
+    const fromNodeId = window.StructureMapUtils && window.StructureMapUtils.filePathFromSymbolNodeId;
+    for (const key of ['added_nodes', 'removed_nodes', 'modified_nodes']) {
+      for (const nodeId of delta[key] || []) {
+        const path = fromNodeId ? fromNodeId(nodeId) : null;
+        if (path) paths.add(path);
+      }
+    }
+    if (delta.changed_file) paths.add(delta.changed_file);
+    return [...paths];
+  }
+
+  async function applyStructureDelta(delta) {
+    if (view.level !== 'structure' || !view.moduleId || !structureMap) return;
+    const affected = filePathsFromGraphDelta(delta);
+    const visible = new Set(structureMap.getVisibleFilePaths());
+    const patchPaths = affected.filter((path) => visible.has(path));
+    if (patchPaths.length === 0) return;
+    try {
+      const tree = await loadStructureTree(view.moduleId);
+      structureMap.patchFromTree(tree, patchPaths);
+      paintStructureMeta(view.moduleId, tree);
+    } catch (err) {
+      console.error('Structure patch failed', err);
+    }
+  }
+
+  function helixGeneIndexFromClick(event) {
+    if (!helixRenderer || !helixRenderer.nodes.length) return -1;
+    const rect = els.helixScroll.getBoundingClientRect();
+    const y = event.clientY - rect.top + els.helixScroll.scrollTop;
+    const index = Math.floor(y / HELIX_PITCH);
+    if (index < 0 || index >= helixRenderer.nodes.length) return -1;
+    return index;
+  }
+
+  function onHelixGeneClick(event) {
+    if (view.level !== 'helix' || !view.moduleId) return;
+    const index = helixGeneIndexFromClick(event);
+    if (index < 0) return;
+    const node = helixRenderer.nodes[index];
+    const filePath = node && node.file_path;
+    zoomIntoStructure(view.moduleId, filePath || null);
   }
 
   // ----------------------------------------------------- real-time mutations
@@ -388,9 +653,15 @@
     els.liveBadge.querySelector('.live-text').textContent = online ? 'Live' : 'Offline';
   }
 
+  function sendSubscription(level, moduleId) {
+    if (!liveMode || !socket || socket.readyState !== WebSocket.OPEN) return;
+    const payload = { action: 'subscribe', level };
+    if ((level === 'helix' || level === 'structure') && moduleId) payload.module_id = moduleId;
+    socket.send(JSON.stringify(payload));
+  }
+
   function connectWebSocket() {
     if (!liveMode) return;
-    let socket;
     try {
       socket = new WebSocket(`ws://${window.location.hostname}:${wsPort}`);
     } catch (err) {
@@ -401,13 +672,24 @@
 
     socket.addEventListener('open', () => {
       setLive(true);
-      socket.send(JSON.stringify({ action: 'subscribe', level: 'karyotype' }));
+      if (view.level === 'structure' && view.moduleId) {
+        sendSubscription('structure', view.moduleId);
+      } else if (view.level === 'helix' && view.moduleId) {
+        sendSubscription('helix', view.moduleId);
+      } else {
+        sendSubscription('karyotype');
+      }
     });
 
     socket.addEventListener('message', (event) => {
       try {
         const payload = JSON.parse(event.data);
         if (payload && payload.type === 'karyotype_update') applyKaryotypeUpdate(payload);
+        if (payload && payload.type === 'graph_delta') {
+          if (payload.module_id !== view.moduleId) return;
+          if (view.level === 'helix') refreshHelixGraph();
+          if (view.level === 'structure') applyStructureDelta(payload);
+        }
       } catch (err) {
         console.error('Bad WebSocket message', err);
       }
@@ -422,6 +704,7 @@
   }
 
   els.crumbRoot.addEventListener('click', showCommunities);
+  els.helixScroll.addEventListener('click', onHelixGeneClick);
 
   loadGenome().then(connectWebSocket);
 })();

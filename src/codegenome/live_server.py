@@ -83,11 +83,11 @@ class LiveGraphServer:
 
         level = str(payload.get("level", "karyotype"))
         module_id = payload.get("module_id")
-        if level not in {"karyotype", "helix"}:
+        if level not in {"karyotype", "helix", "structure"}:
             LOG.debug("Ignoring subscribe with unknown level: %s", level)
             return
-        if level == "helix" and not module_id:
-            LOG.debug("Ignoring helix subscribe without module_id.")
+        if level in {"helix", "structure"} and not module_id:
+            LOG.debug("Ignoring %s subscribe without module_id.", level)
             return
 
         self._subscriptions[websocket] = ClientSubscription(
@@ -173,7 +173,7 @@ class LiveGraphServer:
                     await websocket.send(message.model_dump_json())
                     continue
 
-                if subscription.level == "helix" and subscription.module_id:
+                if subscription.level in {"helix", "structure"} and subscription.module_id:
                     if subscription.module_id not in affected_modules:
                         continue
                     room_delta = filter_graph_delta_for_module(

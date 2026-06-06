@@ -26,6 +26,8 @@ class HtmlWriter:
         copy_html_asset("karyotype.html", output_path.parent / "karyotype.html")
         copy_html_asset("karyotype.css", output_path.parent / "karyotype.css")
         copy_html_asset("karyotype.js", output_path.parent / "karyotype.js")
+        copy_html_asset("helix.js", output_path.parent / "helix.js")
+        copy_html_asset("structure.js", output_path.parent / "structure.js")
         script_src = (
             "vis-network.min.js"
             if bundled_js is not None

@@ -97,3 +97,44 @@ async def test_broadcast_targets_karyotype_and_helix_rooms() -> None:
     assert helix_message["added_nodes"] == ["symbol:core/main.py:run"]
 
     assert other_module_client.sent == []
+
+
+@pytest.mark.asyncio
+async def test_subscribe_structure_room_receives_graph_delta() -> None:
+    server = LiveGraphServer()
+    structure_client = _FakeWebSocket()
+
+    server.clients.add(structure_client)
+    server._subscriptions[structure_client] = ClientSubscription()
+
+    await server._handle_client_message(
+        structure_client,
+        json.dumps({"action": "subscribe", "level": "structure", "module_id": "core"}),
+    )
+
+    subscription = server._subscriptions[structure_client]
+    assert subscription.level == "structure"
+    assert subscription.module_id == "core"
+
+    delta_payload = {
+        "type": "graph_delta",
+        "snapshot_id": 3,
+        "added_nodes": ["symbol:core/main.py:new_fn"],
+        "removed_nodes": [],
+        "modified_nodes": [],
+        "added_edges": [],
+        "removed_edges": [],
+    }
+
+    await server.broadcast_graph_delta(
+        delta_payload,
+        changed_file="core/main.py",
+        karyotype_updates=[{"module_id": "core", "gene_count": 2, "health_score": 0.88}],
+        snapshot_id=3,
+    )
+
+    assert len(structure_client.sent) == 1
+    message = json.loads(structure_client.sent[0])
+    assert message["type"] == "graph_delta"
+    assert message["module_id"] == "core"
+    assert message["added_nodes"] == ["symbol:core/main.py:new_fn"]

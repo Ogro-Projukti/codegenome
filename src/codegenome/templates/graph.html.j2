@@ -440,6 +440,20 @@
             border-color: #3b82f6;
         }
 
+        a.control-btn {
+            text-decoration: none;
+        }
+
+        .control-btn.karyotype-link {
+            border-color: rgba(16, 185, 129, 0.45);
+            color: #6ee7b7;
+        }
+
+        .control-btn.karyotype-link:hover {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: #10b981;
+        }
+
         .top-filters {
             position: absolute;
             top: 24px;
@@ -934,6 +948,9 @@
         </div>
 
         <div class="floating-controls">
+            <a class="control-btn karyotype-link" id="btn-explore-karyotype" href="karyotype.html" target="_blank" rel="noopener noreferrer" title="Open the genome DNA karyotype view in a new window">
+                <i data-lucide="dna"></i> Explore Karyotype
+            </a>
             <button class="control-btn" id="filters-toggle-btn" onclick="toggleFilters()" style="display: none;">
                 <i data-lucide="filter"></i> Filters
             </button>
@@ -1782,6 +1799,10 @@
 
         // Initialize when window loads
         window.addEventListener('load', async () => {
+            const exploreKaryotype = document.getElementById('btn-explore-karyotype');
+            if (exploreKaryotype && window.location.search) {
+                exploreKaryotype.href = `karyotype.html${window.location.search}`;
+            }
             if ((!rawNodes || rawNodes.length === 0) && config.liveJsonUrl) {
                 await fetchGraphData();
             }
