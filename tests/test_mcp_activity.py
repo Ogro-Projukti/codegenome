@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from codegenome.mcp_activity import McpActivityTracker, summarize_args
+from pathlib import Path
+
+from codegenome.mcp_activity import McpActivityStore, McpActivityTracker, summarize_args
 
 
 def test_summarize_args_truncates_long_strings() -> None:
@@ -52,3 +54,31 @@ def test_tracker_ring_buffer_respects_limit() -> None:
     recent = tracker.recent(limit=10)
     assert len(recent) == 3
     assert recent[0]["tool"] == "tool_4"
+
+
+def test_tracker_persists_lifetime_and_monthly_stats(tmp_path: Path) -> None:
+    db_path = tmp_path / "activity.db"
+    store = McpActivityStore(db_path)
+    tracker = McpActivityTracker(store=store)
+    tracker.record(
+        tool="search_nodes",
+        client="mcp",
+        args={"query": "auth"},
+        status="ok",
+        duration_ms=10,
+        response_tokens=100,
+        tokens_saved=900,
+    )
+    store.close()
+
+    new_store = McpActivityStore(db_path)
+    new_tracker = McpActivityTracker(store=new_store)
+    stats = new_tracker.combined_stats()
+
+    assert stats["session"]["total_calls"] == 0
+    assert stats["lifetime"]["total_calls"] == 1
+    assert stats["lifetime"]["total_tokens_saved"] == 900
+    assert stats["month"]["total_tokens_saved"] == 900
+    assert stats["total_calls"] == 1
+    assert stats["total_tokens_saved"] == 900
+    new_store.close()

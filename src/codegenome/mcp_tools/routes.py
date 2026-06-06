@@ -35,7 +35,7 @@ def register_routes(mcp: Any, service: Any, tracker: McpActivityTracker) -> None
             "edge_count": summary.edge_count,
             "empty": summary.empty,
             "memory_bounded": service.config.memory_bounded,
-            "mcp_activity": tracker.stats(),
+            "mcp_activity": tracker.combined_stats(),
         }
         return JSONResponse(payload)
 
@@ -48,7 +48,7 @@ def register_routes(mcp: Any, service: Any, tracker: McpActivityTracker) -> None
             limit = 50
         payload = {
             "status": "ok",
-            "stats": tracker.stats(),
+            "stats": tracker.combined_stats(),
             "events": tracker.recent(limit=limit),
         }
         return JSONResponse(payload)

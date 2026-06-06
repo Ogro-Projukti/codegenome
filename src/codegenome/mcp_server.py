@@ -17,7 +17,7 @@ from typing import Any, Callable, Literal
 from fastmcp import FastMCP
 
 from codegenome.graph_store import GraphStore, GraphStoreError
-from codegenome.mcp_activity import McpActivityTracker
+from codegenome.mcp_activity import McpActivityStore, McpActivityTracker
 from codegenome.mcp_runtime import (
     LOG,
     MCP_CLIENT_CONTEXT,
@@ -290,7 +290,7 @@ def create_server(
     Returns:
         FastMCP: The configured MCP server instance.
     """
-    tracker = activity or McpActivityTracker()
+    tracker = activity or McpActivityTracker(store=McpActivityStore(service.config.db_path))
 
     mcp = FastMCP(
         name="CodeGenome Graph",

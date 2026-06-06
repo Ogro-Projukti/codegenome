@@ -24,6 +24,8 @@ from codegenome.tui import (
     parse_max_working_files,
     working_set_cli_args,
 )
+from codegenome.tui.command_dispatch import dispatch_command_button
+from codegenome.tui.process import remove_active_process
 
 
 def test_working_set_cli_args_empty_when_disabled() -> None:
@@ -151,6 +153,88 @@ def test_command_button_ids_include_channel_specific_stop_buttons() -> None:
     assert "btn-stop-mcp" in CodeGenomeTUI.COMMAND_BUTTON_IDS
     assert "btn-stop-evolve" in CodeGenomeTUI.COMMAND_BUTTON_IDS
     assert "btn-stop" not in CodeGenomeTUI.COMMAND_BUTTON_IDS
+
+
+class _FakeCommandApp:
+    def __init__(self) -> None:
+        self.commands: list[tuple[list[str], str, bool]] = []
+        self.stops: list[tuple[str, str]] = []
+
+    def run_command(
+        self,
+        cmd: list[str],
+        *,
+        channel: str,
+        is_background: bool = False,
+    ) -> None:
+        self.commands.append((cmd, channel, is_background))
+
+    def stop_processes_for_channel(self, channel: str, label: str) -> None:
+        self.stops.append((channel, label))
+
+
+def test_dispatch_command_button_builds_bounded_mcp_command() -> None:
+    app = _FakeCommandApp()
+    settings = MemoryModeSettings(
+        mcp_memory_bounded=True,
+        mcp_full_analysis_on_demand=True,
+    )
+
+    dispatch_command_button(
+        app,
+        object(),  # type: ignore[arg-type]
+        "btn-mcp-local",
+        "D:/repo",
+        settings,
+    )
+
+    assert app.commands == [
+        (
+            [
+                "codegenome",
+                "mcp-start",
+                "--path",
+                "D:/repo",
+                "--transport",
+                "http",
+                "--port",
+                "7331",
+                "--memory-bounded",
+                "--full-analysis-on-demand",
+            ],
+            "mcp",
+            True,
+        )
+    ]
+
+
+def test_dispatch_command_button_routes_stop_mcp() -> None:
+    app = _FakeCommandApp()
+
+    dispatch_command_button(
+        app,
+        object(),  # type: ignore[arg-type]
+        "btn-stop-mcp",
+        "D:/repo",
+        MemoryModeSettings(),
+    )
+
+    assert app.stops == [("mcp", "MCP server")]
+
+
+def test_remove_active_process_returns_channel_and_removes_entry() -> None:
+    process = object()
+    other_process = object()
+    active_processes = [
+        ActiveProcess(process=process, channel="mcp"),  # type: ignore[arg-type]
+        ActiveProcess(process=other_process, channel="evolve"),  # type: ignore[arg-type]
+    ]
+
+    channel = remove_active_process(active_processes, process)  # type: ignore[arg-type]
+
+    assert channel == "mcp"
+    assert len(active_processes) == 1
+    assert active_processes[0].process is other_process
 
 
 def test_stop_processes_for_channel_schedules_only_matching_processes() -> None:

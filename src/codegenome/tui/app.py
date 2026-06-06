@@ -11,9 +11,7 @@ shared :class:`~codegenome.service.CodeGenomeService` instead of shelling out to
 from __future__ import annotations
 
 import asyncio
-import sys
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 
 from textual.actions import SkipAction
@@ -45,23 +43,27 @@ from codegenome.tui.memory import (
     MEMORY_PRESETS,
     MEMORY_SWITCH_LABELS,
     MemoryModeSettings,
-    analyze_mode_cli_args,
-    evolve_mode_cli_args,
     format_memory_mode_preview,
-    mcp_mode_cli_args,
     parse_max_working_files,
 )
-from codegenome.tui.mcp_stats import fetch_mcp_health, format_mcp_activity_bar
-from codegenome.tui.process import ActiveProcess, SubprocessController
+from codegenome.tui.command_dispatch import dispatch_command_button
+from codegenome.tui.mcp_stats import McpStatsController
+from codegenome.tui.process import (
+    ActiveProcess,
+    SubprocessController,
+    execute_process,
+    remove_active_process,
+)
 from codegenome.tui.styles import APP_CSS
 from codegenome.tui.widgets import ReadOnlyRichLog
+from codegenome.tui.workspace_panel import (
+    clear_workspace_scan_panels,
+    update_workspace_scan_panels,
+)
 from codegenome.workspace_info import (
     WorkspaceInfo,
     collect_workspace_info,
     format_dashboard_summary,
-    format_gitignore_files_panel,
-    format_tracked_extensions_panel,
-    format_tracked_folders_panel,
     load_graph_live_summary,
 )
 
@@ -348,12 +350,18 @@ class CodeGenomeTUI(App):
         self.info_folders_log = self.query_one("#info-folders", ReadOnlyRichLog)
         self.info_extensions_log = self.query_one("#info-extensions", ReadOnlyRichLog)
         self.info_gitignore_log = self.query_one("#info-gitignore", ReadOnlyRichLog)
+        self.workspace_scan_panels = (
+            self.info_folders_log,
+            self.info_extensions_log,
+            self.info_gitignore_log,
+        )
         self.workspace_summary = self.query_one("#workspace-summary", Static)
         self.continue_button = self.query_one("#btn-continue", Button)
         self.set_workspace_button = self.query_one("#btn-set-workspace", Button)
         self.log_tabs = self.query_one(TabbedContent)
         self.mcp_activity_stats = self.query_one("#mcp-activity-stats", Static)
-        self.mcp_activity_stats.update(format_mcp_activity_bar(None))
+        self._mcp_stats = McpStatsController(self, self.mcp_activity_stats)
+        self._mcp_stats.initialize()
         self.log_widgets: dict[LogChannel, ReadOnlyRichLog] = {
             channel: self.query_one(f"#{log_id}", ReadOnlyRichLog)
             for channel, log_id in self.LOG_IDS.items()
@@ -400,45 +408,13 @@ class CodeGenomeTUI(App):
         self.set_workspace_button.disabled = not enabled
         self.workspace_input.disabled = not enabled
 
-    def clear_workspace_scan_panels(self, message: str = "") -> None:
-        """Clear the three scan result panels."""
-        for panel in (self.info_folders_log, self.info_extensions_log, self.info_gitignore_log):
-            panel.clear()
-            if message:
-                panel.write(message)
-
-    def update_workspace_scan_panels(self, info: WorkspaceInfo) -> None:
-        """Populate the three scan result panels from workspace info."""
-        if info.error:
-            self.workspace_scan_status.update(
-                f"[bold]Root:[/bold] {info.root}  [bold red]Error:[/bold red] {info.error}"
-            )
-        else:
-            dir_count = len(info.tracked_directories)
-            file_count = len(info.tracked_files)
-            self.workspace_scan_status.update(
-                f"[bold]Root:[/bold] {info.root}  "
-                f"[dim]|[/dim]  "
-                f"{file_count} file{'s' if file_count != 1 else ''} in "
-                f"{dir_count} director{'ies' if dir_count != 1 else 'y'}"
-            )
-
-        self.info_folders_log.clear()
-        self.info_folders_log.write(format_tracked_folders_panel(info))
-
-        self.info_extensions_log.clear()
-        self.info_extensions_log.write(format_tracked_extensions_panel(info))
-
-        self.info_gitignore_log.clear()
-        self.info_gitignore_log.write(format_gitignore_files_panel(info))
-
     def refresh_workspace_info(self, *, on_page: str = PAGE_INFO) -> None:
         """Load ignore rules and tracked paths for the current workspace input."""
         path = self.workspace_input.value.strip() or "."
         self.set_workspace_flow_enabled(False)
         self.continue_button.disabled = True
         self.workspace_scan_status.update("[dim]Scanning workspace...[/dim]")
-        self.clear_workspace_scan_panels("[dim]Scanning...[/dim]")
+        clear_workspace_scan_panels(self.workspace_scan_panels, "[dim]Scanning...[/dim]")
         self.show_page(on_page)
         self.run_worker(
             self._load_workspace_info(path),
@@ -457,7 +433,13 @@ class CodeGenomeTUI(App):
             return
 
         self._pending_workspace_info = info
-        self.update_workspace_scan_panels(info)
+        update_workspace_scan_panels(
+            status_widget=self.workspace_scan_status,
+            folders_log=self.info_folders_log,
+            extensions_log=self.info_extensions_log,
+            gitignore_log=self.info_gitignore_log,
+            info=info,
+        )
 
     def background_refresh_workspace_info(self) -> None:
         """Periodically refresh workspace counts in the background."""
@@ -512,7 +494,7 @@ class CodeGenomeTUI(App):
             self.workspace_scan_status.update(
                 f"[bold red]Failed to scan workspace:[/bold red] {event.worker.error}"
             )
-            self.clear_workspace_scan_panels("[bold red]Scan failed[/bold red]")
+            clear_workspace_scan_panels(self.workspace_scan_panels, "[bold red]Scan failed[/bold red]")
 
     def enter_main_dashboard(self) -> None:
         """Show the main dashboard after workspace confirmation."""
@@ -530,7 +512,7 @@ class CodeGenomeTUI(App):
             )
         if getattr(self, "_mcp_stats_poll_timer", None) is None:
             self._mcp_stats_poll_timer = self.set_interval(
-                3.0, self.background_refresh_mcp_activity_stats
+                3.0, self._mcp_stats.background_refresh
             )
 
         if not self._main_initialized:
@@ -551,25 +533,8 @@ class CodeGenomeTUI(App):
     def write_log(self, channel: LogChannel, message: str) -> None:
         """Append a line to the log panel for the given channel."""
         self.log_widgets[channel].write(message)
-
-    def background_refresh_mcp_activity_stats(self) -> None:
-        """Poll the MCP health endpoint and refresh the activity stats bar."""
-        if self.pages.current != PAGE_MAIN:
-            return
-        self.run_worker(
-            self._poll_mcp_activity_stats,
-            thread=True,
-            exclusive=True,
-            exit_on_error=False,
-            group="mcp-stats",
-        )
-
-    def _poll_mcp_activity_stats(self) -> None:
-        """Worker body: fetch MCP health and update the stats bar on the UI thread."""
-        payload = fetch_mcp_health()
-        activity = payload.get("mcp_activity") if payload else None
-        text = format_mcp_activity_bar(activity)
-        self.call_from_thread(self.mcp_activity_stats.update, text)
+        if channel == "mcp" and hasattr(self, "_mcp_stats"):
+            self._mcp_stats.refresh_after_tool_log(message)
 
     def focus_log_tab(self, channel: LogChannel) -> None:
         """Switch the visible tab to the given log channel."""
@@ -753,180 +718,13 @@ class CodeGenomeTUI(App):
             self.quit_app()
             return
 
-        self._dispatch_command_button(
+        dispatch_command_button(
+            self,
+            self._service,
             button_id,
             self.get_workspace_path(),
             self.get_memory_mode_settings(),
         )
-
-    def _dispatch_command_button(
-        self,
-        button_id: str,
-        workspace: str,
-        memory_settings: MemoryModeSettings,
-    ) -> None:
-        """Run the engine operation behind a dashboard command button."""
-        if button_id == "btn-analyze":
-            self.run_service_task(
-                "Analyze",
-                "analyze",
-                partial(self._analyze_task, workspace, memory_settings),
-                refresh_summary=True,
-            )
-        elif button_id == "btn-export":
-            self.run_service_task(
-                "Export (json)",
-                "general",
-                partial(self._export_task, workspace),
-            )
-        elif button_id == "btn-rules":
-            self.run_service_task(
-                "Generate AI Rules",
-                "general",
-                partial(self._rules_task, workspace),
-            )
-        elif button_id == "btn-mcp-local":
-            self.run_command(
-                [
-                    "codegenome",
-                    "mcp-start",
-                    "--path",
-                    workspace,
-                    "--transport",
-                    "http",
-                    "--port",
-                    "7331",
-                    *mcp_mode_cli_args(memory_settings),
-                ],
-                channel="mcp",
-                is_background=True,
-            )
-        elif button_id == "btn-mcp-lan":
-            self.run_command(
-                [
-                    "codegenome",
-                    "mcp-start",
-                    "--path",
-                    workspace,
-                    "--transport",
-                    "http",
-                    "--port",
-                    "7331",
-                    "--lan",
-                    *mcp_mode_cli_args(memory_settings),
-                ],
-                channel="mcp",
-                is_background=True,
-            )
-        elif button_id == "btn-evolve-local":
-            self.run_command(
-                [
-                    "codegenome",
-                    "evolve",
-                    "--live",
-                    *evolve_mode_cli_args(memory_settings),
-                    workspace,
-                ],
-                channel="evolve",
-                is_background=True,
-            )
-        elif button_id == "btn-evolve-lan":
-            self.run_command(
-                [
-                    "codegenome",
-                    "evolve",
-                    "--live",
-                    "--lan",
-                    *evolve_mode_cli_args(memory_settings),
-                    workspace,
-                ],
-                channel="evolve",
-                is_background=True,
-            )
-        elif button_id == "btn-stop-mcp":
-            self.stop_processes_for_channel("mcp", "MCP server")
-        elif button_id == "btn-stop-evolve":
-            self.stop_processes_for_channel("evolve", "Live Evolve")
-
-    # -- In-process service tasks -----------------------------------------
-
-    def _analyze_task(
-        self,
-        workspace: str,
-        settings: MemoryModeSettings,
-        emit,
-    ) -> None:
-        """Run an in-process analyze and report node/edge totals."""
-        result = self._service.analyze(
-            workspace,
-            memory_bounded=settings.analyze_memory_bounded,
-            max_working_files=settings.max_working_files,
-            on_progress=emit,
-        )
-        emit(
-            f"Build complete: {result.graph.number_of_nodes()} nodes, "
-            f"{result.graph.number_of_edges()} edges."
-        )
-
-    def _export_task(self, workspace: str, emit) -> None:
-        """Run an in-process JSON export and report output paths."""
-        result_paths = self._service.export(workspace, ["json"], on_progress=emit)
-        for fmt, out_path in result_paths.items():
-            emit(f"Exported {fmt} → {out_path}")
-
-    def _rules_task(self, workspace: str, emit) -> None:
-        """Generate AI rule files in-process and report output paths."""
-        results = self._service.generate_rules(workspace, clients=["all"], on_progress=emit)
-        if not results:
-            emit("No clients selected or found.")
-            return
-        for label, out_path in results:
-            emit(f"Generated {label} rules at: {out_path}")
-
-    def run_service_task(
-        self,
-        label: str,
-        channel: LogChannel,
-        func,
-        *,
-        refresh_summary: bool = False,
-    ) -> None:
-        """Run a service callable in a thread worker, streaming output to a panel."""
-        self.focus_log_tab(channel)
-        self.write_log(channel, f"\n[bold blue]> {label}[/bold blue]")
-        self.run_worker(
-            partial(self._execute_service_task, label, channel, func, refresh_summary),
-            thread=True,
-            exclusive=False,
-            exit_on_error=False,
-            group="service",
-        )
-
-    def _execute_service_task(
-        self,
-        label: str,
-        channel: LogChannel,
-        func,
-        refresh_summary: bool,
-    ) -> None:
-        """Worker body: invoke ``func`` and marshal log updates to the UI thread."""
-
-        def emit(message: str) -> None:
-            self.call_from_thread(self.write_log, channel, message)
-
-        try:
-            func(emit)
-        except Exception as exc:  # noqa: BLE001 - surface failures in the log panel
-            self.call_from_thread(
-                self.write_log, channel, f"[bold red]{label} failed:[/bold red] {exc}"
-            )
-            return
-
-        self.call_from_thread(
-            self.write_log, channel, f"[[bold green]{label} complete[/bold green]]"
-        )
-        if refresh_summary:
-            self.call_from_thread(self.refresh_dashboard_summary)
 
     # -- Background subprocesses (servers) --------------------------------
 
@@ -942,108 +740,18 @@ class CodeGenomeTUI(App):
         self.focus_log_tab(channel)
         self.write_log(channel, f"\n[bold blue]> Running:[/bold blue] {command_str}")
         self.run_worker(
-            self._execute_process(cmd, channel=channel, is_background=is_background),
+            execute_process(
+                self,
+                self._proc,
+                self.active_processes,
+                cmd,
+                channel=channel,
+                is_background=is_background,
+            ),
             exclusive=False,
             exit_on_error=False,
             group="command",
         )
-
-    def _track_subprocess(self, process: asyncio.subprocess.Process) -> None:
-        """Register a subprocess so shutdown can close its pipes."""
-        self._proc.track(process)
-
-    def _untrack_subprocess(self, process: asyncio.subprocess.Process) -> None:
-        """Remove a subprocess after its pipes are closed."""
-        self._proc.untrack(process)
-
-    async def _close_subprocess(self, process: asyncio.subprocess.Process) -> None:
-        """Terminate a subprocess and close its pipes."""
-        await self._proc.close(process)
-
-    def _remove_active_process(self, process: asyncio.subprocess.Process) -> LogChannel | None:
-        """Remove a process from the active list and return its log channel."""
-        for index, active in enumerate(self.active_processes):
-            if active.process is process:
-                self.active_processes.pop(index)
-                return active.channel
-        return None
-
-    async def _execute_process(
-        self,
-        cmd: list[str],
-        *,
-        channel: LogChannel,
-        is_background: bool,
-    ) -> None:
-        """Execute subprocess asynchronously and route output to the log panel."""
-        worker = get_current_worker()
-        process: asyncio.subprocess.Process | None = None
-        cancelled = False
-
-        try:
-            if cmd[0] == "codegenome":
-                cmd = [sys.executable, "-m", "codegenome.cli"] + cmd[1:]
-
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            self._track_subprocess(process)
-
-            if is_background:
-                self.active_processes.append(ActiveProcess(process=process, channel=channel))
-                self.write_log(
-                    channel,
-                    f"[italic]Started background process (PID: {process.pid})[/italic]",
-                )
-
-            while True:
-                if worker.is_cancelled:
-                    cancelled = True
-                    break
-
-                if process.stdout is None:
-                    break
-
-                line = await process.stdout.readline()
-                if not line:
-                    break
-
-                text = line.decode(errors="replace").rstrip()
-                self.write_log(channel, text)
-
-        except asyncio.CancelledError:
-            cancelled = True
-            raise
-        except Exception as exc:
-            self.write_log(channel, f"[bold red]Error:[/bold red] {exc}")
-            if process is not None:
-                removed_channel = self._remove_active_process(process)
-                if removed_channel is not None:
-                    self.write_log(
-                        removed_channel,
-                        f"[bold red]Process failed:[/bold red] {exc}",
-                    )
-        else:
-            removed_channel = self._remove_active_process(process)
-            if removed_channel is not None:
-                channel = removed_channel
-
-            if process is not None and not cancelled:
-                status_color = "green" if process.returncode == 0 else "red"
-                self.write_log(
-                    channel,
-                    f"[[bold {status_color}]Process exited with code {process.returncode}[/bold {status_color}]]",
-                )
-                if process.returncode == 0 and channel in ("analyze", "evolve"):
-                    self.refresh_dashboard_summary()
-        finally:
-            if process is not None:
-                self._untrack_subprocess(process)
-                self._remove_active_process(process)
-                await asyncio.shield(self._close_subprocess(process))
 
     def stop_all_processes(self) -> None:
         """Stop all active background processes."""
@@ -1085,9 +793,9 @@ class CodeGenomeTUI(App):
         """Async cleanup for background subprocesses."""
         for active in processes:
             try:
-                await self._close_subprocess(active.process)
-                self._untrack_subprocess(active.process)
-                self._remove_active_process(active.process)
+                await self._proc.close(active.process)
+                self._proc.untrack(active.process)
+                remove_active_process(self.active_processes, active.process)
                 self.write_log(
                     active.channel,
                     f"[yellow]Terminated process (PID: {active.process.pid})[/yellow]",

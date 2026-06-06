@@ -9,8 +9,12 @@ longer responsible for raw transport plumbing.
 from __future__ import annotations
 
 import asyncio
+import sys
 from contextlib import suppress
 from dataclasses import dataclass
+from typing import Any
+
+from textual.worker import get_current_worker
 
 from codegenome.tui.constants import LogChannel
 
@@ -21,6 +25,102 @@ class ActiveProcess:
 
     process: asyncio.subprocess.Process
     channel: LogChannel
+
+
+def remove_active_process(
+    active_processes: list[ActiveProcess],
+    process: asyncio.subprocess.Process,
+) -> LogChannel | None:
+    """Remove a process from the active list and return its log channel."""
+    for index, active in enumerate(active_processes):
+        if active.process is process:
+            active_processes.pop(index)
+            return active.channel
+    return None
+
+
+async def execute_process(
+    app: Any,
+    controller: "SubprocessController",
+    active_processes: list[ActiveProcess],
+    cmd: list[str],
+    *,
+    channel: LogChannel,
+    is_background: bool,
+) -> None:
+    """Execute a subprocess asynchronously and route output to the app log panel."""
+    worker = get_current_worker()
+    process: asyncio.subprocess.Process | None = None
+    cancelled = False
+
+    try:
+        if cmd[0] == "codegenome":
+            cmd = [sys.executable, "-m", "codegenome.cli"] + cmd[1:]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        controller.track(process)
+
+        if is_background:
+            active_processes.append(ActiveProcess(process=process, channel=channel))
+            app.write_log(
+                channel,
+                f"[italic]Started background process (PID: {process.pid})[/italic]",
+            )
+
+        while True:
+            if worker.is_cancelled:
+                cancelled = True
+                break
+
+            if process.stdout is None:
+                break
+
+            line = await process.stdout.readline()
+            if not line:
+                break
+
+            text = line.decode(errors="replace").rstrip()
+            app.write_log(channel, text)
+
+    except asyncio.CancelledError:
+        cancelled = True
+        raise
+    except Exception as exc:
+        app.write_log(channel, f"[bold red]Error:[/bold red] {exc}")
+        if process is not None:
+            removed_channel = remove_active_process(active_processes, process)
+            if removed_channel is not None:
+                app.write_log(
+                    removed_channel,
+                    f"[bold red]Process failed:[/bold red] {exc}",
+                )
+    else:
+        removed_channel = (
+            remove_active_process(active_processes, process)
+            if process is not None
+            else None
+        )
+        if removed_channel is not None:
+            channel = removed_channel
+
+        if process is not None and not cancelled:
+            status_color = "green" if process.returncode == 0 else "red"
+            app.write_log(
+                channel,
+                f"[[bold {status_color}]Process exited with code {process.returncode}[/bold {status_color}]]",
+            )
+            if process.returncode == 0 and channel in ("analyze", "evolve"):
+                app.refresh_dashboard_summary()
+    finally:
+        if process is not None:
+            controller.untrack(process)
+            remove_active_process(active_processes, process)
+            await asyncio.shield(controller.close(process))
 
 
 class SubprocessController:
