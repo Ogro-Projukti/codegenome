@@ -190,3 +190,70 @@ def call_target_name(node: Node, source: bytes) -> str | None:
     if node.children:
         return call_target_name(node.children[0], source)
     return None
+
+
+_INTERFACE_BASE_NAMES = frozenset({"Protocol"})
+_ABSTRACT_BASE_NAMES = frozenset({"ABC", "ABCMeta"})
+
+
+def _collect_base_names(source: bytes, supers_node: Node | None) -> list[str]:
+    """Extract textual base-class names from a superclasses / heritage node."""
+    if supers_node is None:
+        return []
+    names: list[str] = []
+    for child in supers_node.children:
+        if child.type in {"identifier", "attribute", "type_identifier", "scoped_type_identifier"}:
+            names.append(node_text(source, child))
+        elif child.type == "argument_list":
+            for base in child.children:
+                if base.type in {"identifier", "attribute", "type_identifier"}:
+                    names.append(node_text(source, base))
+    return names
+
+
+def _node_has_decorator(source: bytes, node: Node, *needles: str) -> bool:
+    """Return True when ``node`` carries a decorator containing any ``needles``."""
+    for child in node.children:
+        if child.type != "decorator":
+            continue
+        text = node_text(source, child).strip("@").casefold()
+        if any(needle.casefold() in text for needle in needles):
+            return True
+    return False
+
+
+def python_class_kind(source: bytes, class_node: Node, supers_node: Node | None) -> str:
+    """Classify a Python ``class_definition`` as class, abstract_class, or interface."""
+    for base in _collect_base_names(source, supers_node):
+        short = base.rsplit(".", 1)[-1]
+        if short in _INTERFACE_BASE_NAMES or base.endswith(".Protocol"):
+            return "interface"
+    for base in _collect_base_names(source, supers_node):
+        short = base.rsplit(".", 1)[-1]
+        if short in _ABSTRACT_BASE_NAMES or base.endswith(".ABC"):
+            return "abstract_class"
+    if _node_has_decorator(source, class_node, "abstract"):
+        return "abstract_class"
+    body = class_node.child_by_field_name("body")
+    if body is not None:
+        for child in body.children:
+            if child.type == "function_definition" and _node_has_decorator(
+                source, child, "abstractmethod"
+            ):
+                return "abstract_class"
+    return "class"
+
+
+def typescript_class_kind(node: Node) -> str:
+    """Classify a TS/JS class AST node."""
+    if node.type == "abstract_class_declaration":
+        return "abstract_class"
+    return "class"
+
+
+def go_type_kind(source: bytes, spec_node: Node) -> str:
+    """Classify a Go ``type_spec`` as class (struct) or interface."""
+    type_node = spec_node.child_by_field_name("type")
+    if type_node is not None and type_node.type == "interface_type":
+        return "interface"
+    return "class"

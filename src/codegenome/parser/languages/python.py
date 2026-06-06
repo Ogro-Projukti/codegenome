@@ -6,9 +6,12 @@ from tree_sitter import Node
 
 from codegenome.parser.common import (
     append_symbol,
+    go_type_kind,
     line_number,
     node_text,
+    python_class_kind,
     record_call,
+    typescript_class_kind,
 )
 from codegenome.parser.types import ParsedInheritance, ParsedImport, ParseResult
 
@@ -49,16 +52,17 @@ def extract(source: bytes, root: Node, result: ParseResult) -> None:
             if name_node is not None:
                 name = node_text(source, name_node)
                 qname = f"{current_scope()}.{name}" if current_scope() else name
+                supers = node.child_by_field_name("superclasses")
+                kind = python_class_kind(source, node, supers)
                 qname = append_symbol(
                     result,
                     name=name,
-                    kind="class",
+                    kind=kind,
                     node=node,
                     source=source,
                     qualified_name=qname,
                     body_node=node.child_by_field_name("body"),
                 )
-                supers = node.child_by_field_name("superclasses")
                 if supers:
                     for child in supers.children:
                         if child.type in {"identifier", "attribute", "argument_list"}:

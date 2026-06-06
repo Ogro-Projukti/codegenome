@@ -6,6 +6,7 @@ from tree_sitter import Node
 
 from codegenome.parser.common import (
     append_symbol,
+    go_type_kind,
     line_number,
     node_text,
     record_call,
@@ -75,7 +76,7 @@ def extract(source: bytes, root: Node, result: ParseResult) -> None:
                         append_symbol(
                             result,
                             name=name,
-                            kind="class",
+                            kind=go_type_kind(source, spec),
                             node=spec,
                             source=source,
                             qualified_name=name,

@@ -11,7 +11,8 @@ class ParsedSymbol:
 
     Attributes:
         name (str): The local name of the symbol.
-        kind (str): The kind of symbol (e.g., 'class', 'function', 'method').
+        kind (str): The kind of symbol (e.g., ``class``, ``abstract_class``,
+            ``interface``, ``function``, ``method``).
         start_line (int): The starting line number (1-indexed).
         end_line (int): The ending line number (1-indexed).
         docstring (str | None): The extracted docstring or leading comment.

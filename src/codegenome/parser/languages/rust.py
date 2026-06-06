@@ -46,7 +46,7 @@ def extract(source: bytes, root: Node, result: ParseResult) -> None:
             name_node = node.child_by_field_name("name")
             if name_node is not None:
                 name = node_text(source, name_node)
-                kind = "trait" if node.type == "trait_item" else "class"
+                kind = "interface" if node.type == "trait_item" else "class"
                 qname = append_symbol(
                     result,
                     name=name,

@@ -78,6 +78,60 @@ export class Worker {
     assert any(symbol.name == "Worker" for symbol in ts_result.symbols)
 
 
+def test_parser_detects_abstract_classes_and_interfaces(parser: SourceParser) -> None:
+    py = b"""
+from abc import ABC, abstractmethod
+from typing import Protocol
+
+class AbstractRepo(ABC):
+    @abstractmethod
+    def save(self): ...
+
+class Readable(Protocol):
+    def read(self) -> str: ...
+"""
+    py_result = parser.parse_bytes(py, "python", "repo.py")
+    kinds = {symbol.name: symbol.kind for symbol in py_result.symbols}
+    assert kinds["AbstractRepo"] == "abstract_class"
+    assert kinds["Readable"] == "interface"
+
+    ts = b"""
+export abstract class BaseService {
+  abstract run(): void;
+}
+export interface Reader {
+  read(): string;
+}
+"""
+    ts_result = parser.parse_bytes(ts, "typescript", "service.ts")
+    ts_kinds = {symbol.name: symbol.kind for symbol in ts_result.symbols}
+    assert ts_kinds["BaseService"] == "abstract_class"
+    assert ts_kinds["Reader"] == "interface"
+
+    go_source = b"""package main
+
+type Reader interface {
+    Read() int
+}
+
+type Worker struct {}
+"""
+    go_result = parser.parse_bytes(go_source, "go", "types.go")
+    go_kinds = {symbol.name: symbol.kind for symbol in go_result.symbols}
+    assert go_kinds["Reader"] == "interface"
+    assert go_kinds["Worker"] == "class"
+
+    rust_source = b"""
+trait Readable {
+    fn read(&self) -> String;
+}
+struct Worker;
+"""
+    rust_result = parser.parse_bytes(rust_source, "rust", "types.rs")
+    rust_kinds = {symbol.name: symbol.kind for symbol in rust_result.symbols}
+    assert rust_kinds["Readable"] == "interface"
+
+
 def test_parser_extracts_go_and_rust(parser: SourceParser) -> None:
     go_source = b"""package main
 

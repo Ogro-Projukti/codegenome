@@ -9,6 +9,7 @@ from codegenome.parser.common import (
     line_number,
     node_text,
     record_call,
+    typescript_class_kind,
 )
 from codegenome.parser.types import ParsedInheritance, ParsedImport, ParseResult
 
@@ -50,7 +51,7 @@ def extract(source: bytes, root: Node, result: ParseResult, language: str) -> No
                 qname = append_symbol(
                     result,
                     name=name,
-                    kind="class",
+                    kind=typescript_class_kind(node),
                     node=node,
                     source=source,
                     qualified_name=qname,
@@ -78,6 +79,22 @@ def extract(source: bytes, root: Node, result: ParseResult, language: str) -> No
                         walk(child)
                 scope_stack.pop()
                 return
+
+        if node.type == "interface_declaration":
+            name_node = node.child_by_field_name("name")
+            if name_node is not None:
+                name = node_text(source, name_node)
+                qname = f"{current_scope()}.{name}" if current_scope() else name
+                append_symbol(
+                    result,
+                    name=name,
+                    kind="interface",
+                    node=node,
+                    source=source,
+                    qualified_name=qname,
+                    body_node=node.child_by_field_name("body"),
+                )
+            return
 
         if node.type == "import_statement":
             source_node = node.child_by_field_name("source")
