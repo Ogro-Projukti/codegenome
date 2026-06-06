@@ -414,6 +414,49 @@ class GraphStore:
         """
         return self._require_intelligence().detect_circular_dependencies()
 
+    def get_coupling_metrics(
+        self,
+        *,
+        limit: int = 25,
+        include_generated: bool = False,
+        min_cbo: int | None = None,
+    ) -> dict[str, Any]:
+        """Return Chidamber--Kemerer CBO and LCOM metrics for class symbols.
+
+        Args:
+            limit (int): Maximum number of classes to return per ranking. Defaults to 25.
+            include_generated (bool): Include vendor/generated paths when True.
+            min_cbo (int | None): When set, filter tightly coupled classes to this minimum CBO.
+
+        Returns:
+            dict[str, Any]: Class coupling metrics and ranked CBO/LCOM lists.
+        """
+        if limit <= 0:
+            raise ValueError("limit must be a positive integer")
+
+        intelligence = self._require_intelligence()
+        metrics = intelligence.coupling_metrics(include_generated=include_generated)
+        cbo_rankings = intelligence.cbo_rankings(include_generated=include_generated)[:limit]
+        lcom_rankings = intelligence.lcom_rankings(include_generated=include_generated)[:limit]
+        tightly_coupled = intelligence.tightly_coupled_classes(
+            include_generated=include_generated,
+            min_cbo=min_cbo or 5,
+        )[:limit]
+
+        return {
+            "classes": metrics[:limit],
+            "cbo_rankings": [
+                {"node_id": node_id, "cbo": score} for node_id, score in cbo_rankings
+            ],
+            "lcom_rankings": [
+                {"node_id": node_id, "lcom": score} for node_id, score in lcom_rankings
+            ],
+            "tightly_coupled_classes": [
+                {"node_id": node_id, "cbo": score} for node_id, score in tightly_coupled
+            ],
+            "limit": limit,
+        }
+
     def get_complexity(
         self,
         *,

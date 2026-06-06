@@ -266,6 +266,7 @@ class CodeGenomeEngine:
         self.clusterer.annotate(graph)
         emit("Analyzing dependencies...")
         intelligence = GraphIntelligence(graph, registry=self.registry)
+        intelligence.annotate_coupling_metrics()
         intel_report = intelligence.analyze()
 
         emit("Exporting graph...")
@@ -364,6 +365,7 @@ class CodeGenomeEngine:
         self.clusterer.annotate(graph)
         
         intelligence = GraphIntelligence(graph, registry=self.registry)
+        intelligence.annotate_coupling_metrics()
         report = intelligence.analyze()
         
         exporter = GraphExporter(
@@ -517,7 +519,9 @@ class CodeGenomeEngine:
             raise RuntimeError("Cannot export before building a graph")
 
         if report is None:
-            report = GraphIntelligence(graph).analyze()
+            intelligence = GraphIntelligence(graph)
+            intelligence.annotate_coupling_metrics()
+            report = intelligence.analyze()
 
         exporter = GraphExporter(
             graph,

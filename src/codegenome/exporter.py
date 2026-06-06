@@ -402,6 +402,18 @@ class GraphExporter:
                 {"node": node, "churn": value}
                 for node, value in self.report.churn_rankings[:25]
             ],
+            "cbo_rankings": [
+                {"node": node, "cbo": value}
+                for node, value in self.report.cbo_rankings[:25]
+            ],
+            "lcom_rankings": [
+                {"node": node, "lcom": value}
+                for node, value in self.report.lcom_rankings[:25]
+            ],
+            "tightly_coupled_classes": [
+                {"node": node, "cbo": value}
+                for node, value in self.report.tightly_coupled_classes[:25]
+            ],
         }
 
     def _render_markdown(self) -> str:

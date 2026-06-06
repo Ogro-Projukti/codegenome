@@ -601,6 +601,20 @@ def create_server(
 
     @mcp.tool
     @guarded_tool
+    def get_coupling_metrics(
+        limit: int = 25,
+        include_generated: bool = False,
+        min_cbo: int | None = None,
+    ) -> dict[str, Any]:
+        """Return CBO/LCOM coupling metrics and tightly coupled classes."""
+        return service.store.get_coupling_metrics(
+            limit=limit,
+            include_generated=include_generated,
+            min_cbo=min_cbo,
+        )
+
+    @mcp.tool
+    @guarded_tool
     def get_churn(
         file_path: str | None = None,
         snapshot_from: int | None = None,

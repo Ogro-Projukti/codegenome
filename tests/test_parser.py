@@ -25,9 +25,10 @@ class Greeter:
     """Says hello."""
 
     def greet(self, name):
+        self.name = name
         if name:
             helper(name)
-        return name
+        return self.name
 
 def helper(value):
     return value
@@ -43,6 +44,8 @@ def helper(value):
     assert any(symbol.complexity and symbol.complexity >= 1 for symbol in result.symbols)
     assert result.imports
     assert any(call.callee == "helper" for call in result.calls)
+    greet = next(symbol for symbol in result.symbols if symbol.name == "greet")
+    assert "name" in greet.instance_attrs
 
 
 def test_parser_extracts_javascript_and_typescript(parser: SourceParser) -> None:

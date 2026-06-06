@@ -49,6 +49,9 @@ def test_intelligence_empty_graph() -> None:
     assert report.orphan_modules == []
     assert report.complexity_rankings == []
     assert report.churn_rankings == []
+    assert report.cbo_rankings == []
+    assert report.lcom_rankings == []
+    assert report.tightly_coupled_classes == []
 
 
 def test_intelligence_detects_dead_code() -> None:

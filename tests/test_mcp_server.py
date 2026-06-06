@@ -233,6 +233,7 @@ def test_create_server_registers_tools(sample_db: Path) -> None:
         "get_god_nodes",
         "get_circular_deps",
         "get_complexity",
+        "get_coupling_metrics",
         "get_churn",
         "search_nodes",
     }

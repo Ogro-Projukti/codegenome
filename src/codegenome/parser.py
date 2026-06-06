@@ -42,6 +42,7 @@ class ParsedSymbol:
         docstring (str | None): The extracted docstring or leading comment.
         complexity (int | None): Cyclomatic complexity score, if calculated.
         qualified_name (str | None): Fully qualified name, including parent scopes.
+        instance_attrs (frozenset[str]): Instance attributes accessed in method bodies.
     """
     name: str
     kind: str
@@ -50,6 +51,7 @@ class ParsedSymbol:
     docstring: str | None = None
     complexity: int | None = None
     qualified_name: str | None = None
+    instance_attrs: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,33 @@ def _end_line(node: Node) -> int:
 
 def _node_text(source: bytes, node: Node) -> str:
     return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
+
+
+def _collect_instance_attrs(body_node: Node | None, source: bytes) -> frozenset[str]:
+    """Collect instance attribute names accessed via self/this in a method body."""
+    if body_node is None:
+        return frozenset()
+
+    attrs: set[str] = set()
+
+    def walk(node: Node) -> None:
+        if node.type == "attribute":
+            obj = node.child_by_field_name("object")
+            attr = node.child_by_field_name("attribute")
+            if obj is not None and attr is not None:
+                receiver = _node_text(source, obj)
+                if receiver in {"self", "this"}:
+                    attrs.add(_node_text(source, attr))
+        elif node.type == "member_expression":
+            obj = node.child_by_field_name("object")
+            prop = node.child_by_field_name("property")
+            if obj is not None and prop is not None and _node_text(source, obj) == "this":
+                attrs.add(_node_text(source, prop))
+        for child in node.children:
+            walk(child)
+
+    walk(body_node)
+    return frozenset(attrs)
 
 
 def _count_complexity(source: bytes, node: Node) -> int:
@@ -344,6 +373,11 @@ def _append_symbol(
     if docstring is None:
         docstring = _leading_comment_doc(source, node)
     qname = qualified_name or name
+    instance_attrs = (
+        _collect_instance_attrs(body_node, source)
+        if kind in {"function", "method"} and body_node is not None
+        else frozenset()
+    )
     result.symbols.append(
         ParsedSymbol(
             name=name,
@@ -353,6 +387,7 @@ def _append_symbol(
             docstring=docstring,
             complexity=_count_complexity(source, node),
             qualified_name=qname,
+            instance_attrs=instance_attrs,
         )
     )
     return qname

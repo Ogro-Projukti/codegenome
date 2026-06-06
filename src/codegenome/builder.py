@@ -198,6 +198,7 @@ class GraphBuilder:
             end_line=symbol.end_line,
             docstring=symbol.docstring,
             complexity=symbol.complexity,
+            instance_attrs=sorted(symbol.instance_attrs),
             first_seen=timestamp,
             last_seen=timestamp,
             churn=0,

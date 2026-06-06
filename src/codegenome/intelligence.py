@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 import networkx as nx
 
 from codegenome.builder import file_node_id
+from codegenome.coupling_metrics import CLASS_KINDS, CouplingMetricsAnalyzer
 from codegenome.graph_api import Graph
 from codegenome.registry import GlobalDependencyRegistry
 
@@ -28,6 +29,9 @@ class IntelligenceReport:
         orphan_modules (list[str]): Files that are not imported by and do not import others.
         complexity_rankings (list[tuple[str, int]]): Symbols ranked by cyclomatic complexity.
         churn_rankings (list[tuple[str, int]]): Nodes ranked by churn rate.
+        cbo_rankings (list[tuple[str, int]]): Classes ranked by coupling between objects (CBO).
+        lcom_rankings (list[tuple[str, int]]): Classes ranked by lack of cohesion in methods (LCOM).
+        tightly_coupled_classes (list[tuple[str, int]]): Classes with high CBO (tight coupling).
     """
 
     dead_code: list[str] = field(default_factory=list)
@@ -37,6 +41,9 @@ class IntelligenceReport:
     orphan_modules: list[str] = field(default_factory=list)
     complexity_rankings: list[tuple[str, int]] = field(default_factory=list)
     churn_rankings: list[tuple[str, int]] = field(default_factory=list)
+    cbo_rankings: list[tuple[str, int]] = field(default_factory=list)
+    lcom_rankings: list[tuple[str, int]] = field(default_factory=list)
+    tightly_coupled_classes: list[tuple[str, int]] = field(default_factory=list)
 
 
 class GraphIntelligence:
@@ -111,6 +118,9 @@ class GraphIntelligence:
             orphan_modules=self.detect_orphan_modules(),
             complexity_rankings=self.complexity_rankings(),
             churn_rankings=self.churn_rankings(),
+            cbo_rankings=self.cbo_rankings(),
+            lcom_rankings=self.lcom_rankings(),
+            tightly_coupled_classes=self.tightly_coupled_classes(),
         )
 
     def detect_dead_code(
@@ -192,6 +202,7 @@ class GraphIntelligence:
             list[tuple[str, float]]: A list of tuples containing node IDs and their
                 corresponding scores, sorted in descending order of score.
         """
+        coupling_metrics = self._coupling_analyzer().compute_all()
         scores: dict[str, float] = {}
         for node, attrs in self.graph.iter_nodes():
             if attrs.get("node_type") not in {"file", "symbol"}:
@@ -206,7 +217,13 @@ class GraphIntelligence:
                 if fqn:
                     in_degree += len(self.registry.get_dependents(fqn))
 
-            scores[node] = float(in_degree + out_degree)
+            score = float(in_degree + out_degree)
+            if str(attrs.get("kind", "")) in CLASS_KINDS:
+                class_metrics = coupling_metrics.get(node)
+                if class_metrics is not None:
+                    score = max(score, float(class_metrics.cbo + class_metrics.lcom))
+
+            scores[node] = score
 
         if not scores:
             return []
@@ -303,6 +320,82 @@ class GraphIntelligence:
             ranked.append((node, int(complexity)))
         ranked.sort(key=lambda item: (-item[1], item[0]))
         return ranked
+
+    def cbo_rankings(self, *, include_generated: bool = False) -> list[tuple[str, int]]:
+        """Rank classes by descending coupling between objects (CBO)."""
+        return self._filtered_coupling_rankings(
+            self._coupling_analyzer().cbo_rankings(),
+            include_generated=include_generated,
+        )
+
+    def lcom_rankings(self, *, include_generated: bool = False) -> list[tuple[str, int]]:
+        """Rank classes by descending lack of cohesion in methods (LCOM)."""
+        return self._filtered_coupling_rankings(
+            self._coupling_analyzer().lcom_rankings(),
+            include_generated=include_generated,
+        )
+
+    def tightly_coupled_classes(
+        self,
+        *,
+        include_generated: bool = False,
+        min_cbo: int = 5,
+    ) -> list[tuple[str, int]]:
+        """Return classes with CBO at or above ``min_cbo``."""
+        return self._filtered_coupling_rankings(
+            self._coupling_analyzer().tightly_coupled_classes(min_cbo=min_cbo),
+            include_generated=include_generated,
+        )
+
+    def coupling_metrics(
+        self,
+        *,
+        include_generated: bool = False,
+    ) -> list[dict[str, object]]:
+        """Return per-class CBO and LCOM metrics."""
+        analyzer = self._coupling_analyzer()
+        rows: list[dict[str, object]] = []
+        for class_id, metrics in analyzer.compute_all().items():
+            attrs = self.graph.get_node(class_id) if self.graph.has_node(class_id) else {}
+            if not include_generated and self._is_generated_or_vendor(attrs):
+                continue
+            rows.append(
+                {
+                    "node_id": class_id,
+                    "qualified_name": metrics.qualified_name,
+                    "cbo": metrics.cbo,
+                    "lcom": metrics.lcom,
+                    "method_count": metrics.method_count,
+                }
+            )
+        rows.sort(key=lambda row: (-int(row["cbo"]), -int(row["lcom"]), str(row["node_id"])))
+        return rows
+
+    def annotate_coupling_metrics(self) -> None:
+        """Write computed CBO/LCOM values onto class symbol nodes."""
+        for class_id, metrics in self._coupling_analyzer().compute_all().items():
+            if self.graph.has_node(class_id):
+                self.graph.set_node_attr(class_id, "cbo", metrics.cbo)
+                self.graph.set_node_attr(class_id, "lcom", metrics.lcom)
+
+    def _coupling_analyzer(self) -> CouplingMetricsAnalyzer:
+        return CouplingMetricsAnalyzer(self.graph)
+
+    def _filtered_coupling_rankings(
+        self,
+        rankings: list[tuple[str, int]],
+        *,
+        include_generated: bool,
+    ) -> list[tuple[str, int]]:
+        if include_generated:
+            return rankings
+        filtered: list[tuple[str, int]] = []
+        for node_id, score in rankings:
+            attrs = self.graph.get_node(node_id) if self.graph.has_node(node_id) else {}
+            if self._is_generated_or_vendor(attrs):
+                continue
+            filtered.append((node_id, score))
+        return filtered
 
     def churn_rankings(self) -> list[tuple[str, int]]:
         """Rank nodes based on their churn rate (how often they change).
