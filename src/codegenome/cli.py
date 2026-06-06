@@ -143,8 +143,20 @@ def mcp_start(path: str, transport: str, port: int, lan: bool):
     is_flag=True,
     help="Expose HTTP and WebSocket on the local network (0.0.0.0).",
 )
+@click.option(
+    "--memory-bounded",
+    is_flag=True,
+    help="Keep only a bounded file working set in memory after the initial build.",
+)
+@click.option(
+    "--max-working-files",
+    default=64,
+    show_default=True,
+    type=int,
+    help="Maximum files resident in memory when --memory-bounded is enabled.",
+)
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
-def evolve(path: str, live: bool, lan: bool):
+def evolve(path: str, live: bool, lan: bool, memory_bounded: bool, max_working_files: int):
     """Start real-time architectural observer and open live UI.
 
     Args:
@@ -162,7 +174,12 @@ def evolve(path: str, live: bool, lan: bool):
     from codegenome.core import CodeGenomeConfig, CodeGenomeEngine, SurgicalUpdateHandler
 
     workspace = Path(path).resolve()
-    config = CodeGenomeConfig(workspace=workspace, export_formats=("json", "html"))
+    config = CodeGenomeConfig(
+        workspace=workspace,
+        export_formats=("json", "html"),
+        memory_bounded=memory_bounded,
+        max_working_files=max(1, max_working_files),
+    )
     engine = CodeGenomeEngine(config)
     
     click.echo(f"Running initial build for {workspace}...")

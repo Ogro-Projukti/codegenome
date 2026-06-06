@@ -169,19 +169,66 @@ codegenome evolve --live
 
 ---
 
+## Partial graph loading and working set (Phase 2–3)
+
+### New capabilities
+
+| Component | Purpose |
+|-----------|---------|
+| `graph_node_files` table | File-path index for each node at snapshot time |
+| `graph_loader.node_file_path()` | Resolve owning file from node ID / attrs |
+| `GraphTimeline.load_file_subgraph()` | Load nodes/edges for specific files only |
+| `GraphTimeline.load_neighborhood()` | Bounded BFS load for MCP-style queries |
+| `GraphTimeline.record_snapshot_patch()` | New snapshot by patching changed files in SQL |
+| `WorkingSetGraph` | LRU-bounded in-memory file working set |
+| `CodeGenomeConfig.memory_bounded` | Opt-in bounded runtime |
+| `evolve --memory-bounded` | Live mode with bounded RAM after initial build |
+
+### Memory-bounded live evolve
+
+```bash
+codegenome evolve --live --memory-bounded --max-working-files 64
+```
+
+Flow:
+
+1. Initial `build()` still scans the full workspace and writes a complete snapshot.
+2. After build, the in-memory graph is **evicted**; only snapshot metadata and GDR remain loaded.
+3. Each surgical update:
+   - Resolves `ChangeScope` via persisted GDR
+   - Loads only scope files into `WorkingSetGraph`
+   - Applies `builder.update()` on the working set
+   - Persists via `record_snapshot_patch()` (no full-graph RAM required for write)
+   - Temporarily loads the full snapshot from disk for exports/analysis, then drops it again
+
+### Usage example
+
+```python
+from codegenome.timeline import GraphTimeline
+
+timeline = GraphTimeline(".genome/codegenome.db")
+snapshots = timeline.list_snapshots()
+snapshot_id = snapshots[-1].snapshot_id
+
+alpha_only = timeline.load_file_subgraph(snapshot_id, {"src/alpha.py"})
+neighbors = timeline.load_neighborhood(snapshot_id, "file:src/alpha.py", depth=2, max_nodes=100)
+```
+
 ## Limitations and next steps
 
-Implemented (Phase 1):
+Implemented:
 
-- [x] GDR SQLite schema and `GDRStore`
-- [x] Persist GDR after each snapshot
-- [x] Restore GDR on engine startup
+- [x] GDR SQLite schema and `GDRStore` (Phase 1)
+- [x] Persist / restore GDR on engine startup
 - [x] Live/watch handlers respect gitignore
+- [x] File-scoped graph load and snapshot patching (Phase 2)
+- [x] `WorkingSetGraph` + `evolve --memory-bounded` (Phase 3)
 
-Not yet implemented (see [`memory-bounded-storage.md`](memory-bounded-storage.md)):
+Not yet implemented:
 
-- [ ] File-scoped graph load (`load_file_subgraph`)
-- [ ] `WorkingSetGraph` bounded in-memory cache
-- [ ] Bounded MCP `GraphStore` mode
-- [ ] Scoped or deferred global analyses under memory limits
+- [ ] Bounded MCP `GraphStore` mode (queries still load full graph by default)
+- [ ] Global analyses without temporary full-graph reload after surgical updates
 - [ ] GDR deltas per snapshot (full copy per snapshot today)
+- [ ] Memory-bounded incremental `watch` rebuild path (debounced full rebuild still loads everything)
+
+See [`memory-bounded-storage.md`](memory-bounded-storage.md) for the full design spec.

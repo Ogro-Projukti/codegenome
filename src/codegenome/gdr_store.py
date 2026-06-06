@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from codegenome.registry import GlobalDependencyRegistry, RegistryEntry
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 GDR_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,

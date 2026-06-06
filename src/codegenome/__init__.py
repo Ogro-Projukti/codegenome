@@ -12,6 +12,7 @@ from .parser import ParseResult, SourceParser
 from .scanner import ScanResult, WorkspaceScanner
 from .gdr_store import ChangeScope, GDRFileEntry, GDRStore
 from .timeline import GraphDelta, GraphTimeline, SnapshotInfo
+from .working_set import WorkingSetGraph
 from .version import __version__
 from .core import BuildResult, CodeGenomeConfig, CodeGenomeEngine
 
@@ -37,5 +38,6 @@ __all__ = [
     "SUPPORTED_FORMATS",
     "CodeGenomeConfig",
     "CodeGenomeEngine",
+    "WorkingSetGraph",
     "WorkspaceScanner",
 ]

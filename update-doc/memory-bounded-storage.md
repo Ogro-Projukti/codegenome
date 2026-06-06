@@ -524,16 +524,32 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 
 ---
 
-## Implementation checklist (phase 1)
+## Implementation checklist
 
-- [ ] Add `gdr_store.py` with schema DDL and `persist_snapshot` / `get_provider` / `get_dependents`
-- [ ] Extend `GraphTimeline._initialize_schema()` or call `GDRStore.initialize_schema()` from timeline init
-- [ ] Wire `CodeGenomeEngine.build()` and `surgical_update()` to persist GDR after `record_snapshot`
-- [ ] Add `_load_existing_registry()` on engine startup (optional but improves restart time)
-- [ ] Unit tests for round-trip and scope resolution
-- [ ] Document in `CHANGELOG.md` when shipped
+### Phase 1 — GDR persistence (shipped)
 
-Phases 2–5 remain future work per the paper; this file should be updated as each phase lands.
+- [x] Add `gdr_store.py` with schema DDL and `persist_snapshot` / `get_provider` / `get_dependents`
+- [x] Extend `GraphTimeline._initialize_schema()` or call `GDRStore.initialize_schema()` from timeline init
+- [x] Wire `CodeGenomeEngine.build()` and `surgical_update()` to persist GDR after `record_snapshot`
+- [x] Add `_load_existing_registry()` on engine startup
+- [x] Unit tests for round-trip and scope resolution
+
+### Phase 2–3 — Partial graph load and working set (shipped)
+
+- [x] `graph_node_files` index populated at `record_snapshot`
+- [x] `GraphTimeline.load_file_subgraph()` and `load_neighborhood()`
+- [x] `GraphTimeline.record_snapshot_patch()` for SQL-backed surgical persistence
+- [x] `WorkingSetGraph` with LRU file eviction
+- [x] `CodeGenomeConfig.memory_bounded` and `evolve --memory-bounded`
+- [x] Surgical updates use GDR scope + working set when memory-bounded
+
+### Phase 4–5 — remaining
+
+- [ ] Bounded MCP `GraphStore` mode (`load_neighborhood` on tool queries)
+- [ ] Scoped or deferred global analyses without temporary full-graph reload
+- [ ] GDR deltas per snapshot (full copy per snapshot today)
+
+See [`gdr-persistence-and-live-watch-ignore.md`](gdr-persistence-and-live-watch-ignore.md) for release notes.
 
 ---
 

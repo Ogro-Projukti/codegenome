@@ -17,6 +17,7 @@ from typing import Any
 from codegenome.builder import file_node_id
 from codegenome.gdr_store import GDRStore
 from codegenome.graph_api import Graph, create_graph
+from codegenome.graph_loader import node_file_path
 
 
 @dataclass(frozen=True)
@@ -162,6 +163,7 @@ class GraphTimeline:
                 edge_rows,
             )
 
+        self._index_graph_node_files(snapshot_id, graph)
         self._conn.commit()
         return snapshot_id
 
@@ -197,6 +199,217 @@ class GraphTimeline:
                 **json.loads(row["attrs_json"]),
             )
         return graph
+
+    def has_node_file_index(self, snapshot_id: int) -> bool:
+        """Return True when graph_node_files rows exist for a snapshot."""
+        row = self._conn.execute(
+            "SELECT 1 FROM graph_node_files WHERE snapshot_id = ? LIMIT 1",
+            (snapshot_id,),
+        ).fetchone()
+        return row is not None
+
+    def load_file_subgraph(
+        self,
+        snapshot_id: int,
+        file_paths: set[str],
+        *,
+        include_cross_edges: bool = True,
+    ) -> Graph:
+        """Load nodes and edges for a set of file paths without loading the full snapshot."""
+        if not file_paths:
+            return create_graph("igraph")
+
+        graph = create_graph("igraph")
+        node_ids = self._node_ids_for_files(snapshot_id, file_paths)
+        if not node_ids:
+            return graph
+
+        placeholders = ", ".join("?" for _ in node_ids)
+        rows = self._conn.execute(
+            f"""
+            SELECT node_id, attrs_json
+            FROM graph_nodes
+            WHERE snapshot_id = ? AND node_id IN ({placeholders})
+            """,
+            (snapshot_id, *sorted(node_ids)),
+        ).fetchall()
+        for row in rows:
+            graph.add_node(row["node_id"], **json.loads(row["attrs_json"]))
+
+        edge_rows = self._conn.execute(
+            f"""
+            SELECT source_id, target_id, attrs_json
+            FROM graph_edges
+            WHERE snapshot_id = ?
+              AND source_id IN ({placeholders})
+              AND target_id IN ({placeholders})
+            """,
+            (snapshot_id, *sorted(node_ids), *sorted(node_ids)),
+        ).fetchall()
+
+        for row in edge_rows:
+            graph.add_edge(
+                row["source_id"],
+                row["target_id"],
+                **json.loads(row["attrs_json"]),
+            )
+        return graph
+
+    def load_neighborhood(
+        self,
+        snapshot_id: int,
+        seed_node_id: str,
+        *,
+        depth: int = 1,
+        max_nodes: int = 500,
+    ) -> Graph:
+        """Load a bounded BFS neighborhood around a seed node."""
+        if depth < 1 or max_nodes < 1:
+            return create_graph("igraph")
+
+        frontier = {seed_node_id}
+        visited: set[str] = set()
+        edges: list[tuple[str, str, str]] = []
+
+        for _ in range(depth):
+            if not frontier or len(visited) >= max_nodes:
+                break
+            batch = sorted(frontier - visited)
+            if not batch:
+                break
+            remaining = max_nodes - len(visited)
+            batch = batch[:remaining]
+            placeholders = ", ".join("?" for _ in batch)
+            rows = self._conn.execute(
+                f"""
+                SELECT source_id, target_id, attrs_json
+                FROM graph_edges
+                WHERE snapshot_id = ?
+                  AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
+                """,
+                (snapshot_id, *batch, *batch),
+            ).fetchall()
+
+            next_frontier: set[str] = set()
+            for row in rows:
+                source = row["source_id"]
+                target = row["target_id"]
+                edges.append((source, target, row["attrs_json"]))
+                if source in batch:
+                    next_frontier.add(target)
+                if target in batch:
+                    next_frontier.add(source)
+
+            visited.update(batch)
+            frontier = next_frontier
+
+        graph = create_graph("igraph")
+        if seed_node_id not in visited:
+            visited.add(seed_node_id)
+
+        placeholders = ", ".join("?" for _ in visited)
+        node_rows = self._conn.execute(
+            f"""
+            SELECT node_id, attrs_json
+            FROM graph_nodes
+            WHERE snapshot_id = ? AND node_id IN ({placeholders})
+            """,
+            (snapshot_id, *sorted(visited)),
+        ).fetchall()
+        for row in node_rows:
+            graph.add_node(row["node_id"], **json.loads(row["attrs_json"]))
+
+        seen_edges: set[tuple[str, str]] = set()
+        for source, target, attrs_json in edges:
+            if source in visited and target in visited:
+                key = (source, target)
+                if key not in seen_edges:
+                    graph.add_edge(source, target, **json.loads(attrs_json))
+                    seen_edges.add(key)
+        return graph
+
+    def record_snapshot_patch(
+        self,
+        base_snapshot_id: int,
+        changed_files: set[str],
+        fragment: Graph,
+        *,
+        label: str | None = None,
+        created_at: float | None = None,
+    ) -> int:
+        """Create a new snapshot by patching only the files that changed."""
+        changed = {path for path in changed_files if path}
+        timestamp = created_at if created_at is not None else time.time()
+
+        kept_node_ids = self._node_ids_for_files(
+            base_snapshot_id,
+            self._all_indexed_files(base_snapshot_id) - changed,
+        )
+        changed_node_ids = {
+            node_id
+            for node_id, attrs in fragment.iter_nodes()
+            if (node_file_path(node_id, attrs) or "") in changed
+        }
+        all_node_ids = kept_node_ids | changed_node_ids
+
+        kept_edges = self._edges_for_node_ids(base_snapshot_id, kept_node_ids)
+        fragment_edges = self._edges_for_node_ids_in_fragment(fragment, all_node_ids)
+        all_edges = self._merge_edge_maps(kept_edges, fragment_edges)
+
+        cursor = self._conn.execute(
+            """
+            INSERT INTO snapshots (created_at, label, node_count, edge_count)
+            VALUES (?, ?, ?, ?)
+            """,
+            (timestamp, label, len(all_node_ids), len(all_edges)),
+        )
+        snapshot_id = int(cursor.lastrowid)
+        edge_items = list(all_edges.items())
+
+        node_rows: list[tuple[int, str, str]] = []
+        if kept_node_ids:
+            placeholders = ", ".join("?" for _ in kept_node_ids)
+            rows = self._conn.execute(
+                f"""
+                SELECT node_id, attrs_json
+                FROM graph_nodes
+                WHERE snapshot_id = ? AND node_id IN ({placeholders})
+                """,
+                (base_snapshot_id, *sorted(kept_node_ids)),
+            ).fetchall()
+            node_rows.extend((snapshot_id, row["node_id"], row["attrs_json"]) for row in rows)
+
+        for node_id in sorted(changed_node_ids):
+            node_rows.append((snapshot_id, node_id, json.dumps(fragment.get_node(node_id), sort_keys=True)))
+
+        if node_rows:
+            self._conn.executemany(
+                "INSERT INTO graph_nodes (snapshot_id, node_id, attrs_json) VALUES (?, ?, ?)",
+                node_rows,
+            )
+
+        if edge_items:
+            edge_rows = [
+                (snapshot_id, source, target, json.dumps(attrs, sort_keys=True))
+                for (source, target), attrs in sorted(edge_items)
+            ]
+            self._conn.executemany(
+                """
+                INSERT INTO graph_edges (snapshot_id, source_id, target_id, attrs_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                edge_rows,
+            )
+
+        self._copy_graph_node_file_index(
+            snapshot_id,
+            base_snapshot_id,
+            kept_node_ids,
+            changed_node_ids,
+            fragment,
+        )
+        self._conn.commit()
+        return snapshot_id
 
     def list_snapshots(self) -> list[SnapshotInfo]:
         """List all recorded snapshots in ascending order.
@@ -376,9 +589,178 @@ class GraphTimeline:
                 PRIMARY KEY (snapshot_id, source_id, target_id),
                 FOREIGN KEY (snapshot_id) REFERENCES snapshots(snapshot_id)
             );
+
+            CREATE TABLE IF NOT EXISTS graph_node_files (
+                snapshot_id INTEGER NOT NULL,
+                node_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                PRIMARY KEY (snapshot_id, node_id),
+                FOREIGN KEY (snapshot_id) REFERENCES snapshots(snapshot_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_graph_node_files_path
+                ON graph_node_files (snapshot_id, file_path);
             """
         )
         self._conn.commit()
+
+    def _index_graph_node_files(self, snapshot_id: int, graph: Graph) -> None:
+        rows: list[tuple[int, str, str]] = []
+        for node_id, attrs in graph.iter_nodes():
+            file_path = node_file_path(node_id, attrs)
+            if file_path:
+                rows.append((snapshot_id, node_id, file_path))
+        self._conn.execute("DELETE FROM graph_node_files WHERE snapshot_id = ?", (snapshot_id,))
+        if rows:
+            self._conn.executemany(
+                """
+                INSERT INTO graph_node_files (snapshot_id, node_id, file_path)
+                VALUES (?, ?, ?)
+                """,
+                rows,
+            )
+
+    def _copy_graph_node_file_index(
+        self,
+        snapshot_id: int,
+        base_snapshot_id: int,
+        kept_node_ids: set[str],
+        changed_node_ids: set[str],
+        fragment: Graph,
+    ) -> None:
+        self._conn.execute("DELETE FROM graph_node_files WHERE snapshot_id = ?", (snapshot_id,))
+        if kept_node_ids and self.has_node_file_index(base_snapshot_id):
+            placeholders = ", ".join("?" for _ in kept_node_ids)
+            self._conn.execute(
+                f"""
+                INSERT INTO graph_node_files (snapshot_id, node_id, file_path)
+                SELECT ?, node_id, file_path
+                FROM graph_node_files
+                WHERE snapshot_id = ? AND node_id IN ({placeholders})
+                """,
+                (snapshot_id, base_snapshot_id, *sorted(kept_node_ids)),
+            )
+        elif kept_node_ids:
+            placeholders = ", ".join("?" for _ in kept_node_ids)
+            rows = self._conn.execute(
+                f"""
+                SELECT node_id, attrs_json
+                FROM graph_nodes
+                WHERE snapshot_id = ? AND node_id IN ({placeholders})
+                """,
+                (base_snapshot_id, *sorted(kept_node_ids)),
+            ).fetchall()
+            index_rows = []
+            for row in rows:
+                file_path = node_file_path(row["node_id"], json.loads(row["attrs_json"]))
+                if file_path:
+                    index_rows.append((snapshot_id, row["node_id"], file_path))
+            if index_rows:
+                self._conn.executemany(
+                    "INSERT INTO graph_node_files (snapshot_id, node_id, file_path) VALUES (?, ?, ?)",
+                    index_rows,
+                )
+
+        changed_rows: list[tuple[int, str, str]] = []
+        for node_id in sorted(changed_node_ids):
+            file_path = node_file_path(node_id, fragment.get_node(node_id))
+            if file_path:
+                changed_rows.append((snapshot_id, node_id, file_path))
+        if changed_rows:
+            self._conn.executemany(
+                "INSERT INTO graph_node_files (snapshot_id, node_id, file_path) VALUES (?, ?, ?)",
+                changed_rows,
+            )
+
+    def _node_ids_for_files(self, snapshot_id: int, file_paths: set[str]) -> set[str]:
+        if not file_paths:
+            return set()
+        if self.has_node_file_index(snapshot_id):
+            placeholders = ", ".join("?" for _ in file_paths)
+            rows = self._conn.execute(
+                f"""
+                SELECT node_id
+                FROM graph_node_files
+                WHERE snapshot_id = ? AND file_path IN ({placeholders})
+                """,
+                (snapshot_id, *sorted(file_paths)),
+            ).fetchall()
+            return {row["node_id"] for row in rows}
+
+        result: set[str] = set()
+        wanted = set(file_paths)
+        rows = self._conn.execute(
+            "SELECT node_id, attrs_json FROM graph_nodes WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchall()
+        for row in rows:
+            attrs = json.loads(row["attrs_json"])
+            if node_file_path(row["node_id"], attrs) in wanted:
+                result.add(row["node_id"])
+        return result
+
+    def _all_indexed_files(self, snapshot_id: int) -> set[str]:
+        if self.has_node_file_index(snapshot_id):
+            rows = self._conn.execute(
+                "SELECT DISTINCT file_path FROM graph_node_files WHERE snapshot_id = ?",
+                (snapshot_id,),
+            ).fetchall()
+            return {row["file_path"] for row in rows}
+
+        files: set[str] = set()
+        rows = self._conn.execute(
+            "SELECT node_id, attrs_json FROM graph_nodes WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchall()
+        for row in rows:
+            file_path = node_file_path(row["node_id"], json.loads(row["attrs_json"]))
+            if file_path:
+                files.add(file_path)
+        return files
+
+    def _edges_for_node_ids(
+        self,
+        snapshot_id: int,
+        node_ids: set[str],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        if not node_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in node_ids)
+        rows = self._conn.execute(
+            f"""
+            SELECT source_id, target_id, attrs_json
+            FROM graph_edges
+            WHERE snapshot_id = ?
+              AND source_id IN ({placeholders})
+              AND target_id IN ({placeholders})
+            """,
+            (snapshot_id, *sorted(node_ids), *sorted(node_ids)),
+        ).fetchall()
+        return {
+            (row["source_id"], row["target_id"]): json.loads(row["attrs_json"])
+            for row in rows
+        }
+
+    @staticmethod
+    def _edges_for_node_ids_in_fragment(
+        fragment: Graph,
+        node_ids: set[str],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        allowed = set(node_ids)
+        return {
+            (source, target): dict(attrs)
+            for source, target, attrs in fragment.iter_edges()
+            if source in allowed and target in allowed
+        }
+
+    @staticmethod
+    def _merge_edge_maps(
+        *edge_maps: dict[tuple[str, str], dict[str, Any]],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        merged: dict[tuple[str, str], dict[str, Any]] = {}
+        for edge_map in edge_maps:
+            merged.update(edge_map)
+        return merged
 
     def _node_map(self, snapshot_id: int) -> dict[str, str]:
         rows = self._conn.execute(

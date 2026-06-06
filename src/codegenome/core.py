@@ -24,7 +24,8 @@ from codegenome.parser import SourceParser
 from codegenome.scanner import ScanResult, WorkspaceScanner, FileRecord
 from codegenome.live_graph_monitor import LiveGraphMonitor
 from codegenome.timeline import GraphTimeline
-from codegenome.registry import GlobalDependencyRegistry
+from codegenome.registry import GlobalDependencyRegistry, RegistryEntry
+from codegenome.working_set import WorkingSetGraph
 
 LOG = logging.getLogger(__name__)
 
@@ -49,6 +50,8 @@ class CodeGenomeConfig:
     watch_debounce_seconds: float = 30.0
     live_graph: bool = False
     live_graph_poll_seconds: float = 30.0
+    memory_bounded: bool = False
+    max_working_files: int = 64
 
 
 @dataclass
@@ -204,6 +207,8 @@ class CodeGenomeEngine:
         self._observer: Observer | None = None
         self._live_graph_monitor: LiveGraphMonitor | None = None
         self._mcp_process: subprocess.Popen[str] | None = None
+        self._working_set: WorkingSetGraph | None = None
+        self._active_snapshot_id: int | None = None
         self._loaded_existing_graph = self._load_existing_graph()
 
     def should_process_path(self, rel_path: str) -> bool:
@@ -287,6 +292,9 @@ class CodeGenomeEngine:
 
         snapshot_id = self.timeline.record_snapshot(graph, label=label)
         self._persist_gdr(snapshot_id)
+        self._active_snapshot_id = snapshot_id
+        if self.config.memory_bounded:
+            self._enter_memory_bounded_mode(snapshot_id)
         export_paths = self._run_exports(exporter)
         self._loaded_existing_graph = True
 
@@ -358,7 +366,31 @@ class CodeGenomeEngine:
             deleted=deleted,
             unchanged=set()
         )
-        
+
+        changed_files = set(added) | set(modified) | set(deleted)
+        base_snapshot_id = self._active_snapshot_id
+        if base_snapshot_id is None:
+            snapshots = self.timeline.list_snapshots()
+            base_snapshot_id = snapshots[-1].snapshot_id if snapshots else None
+
+        if (
+            self.config.memory_bounded
+            and self._working_set is not None
+            and base_snapshot_id is not None
+            and self.timeline.gdr_store.has_snapshot(base_snapshot_id)
+        ):
+            removed_fqns: set[str] = set()
+            for path in changed_files:
+                if path in deleted:
+                    removed_fqns.update(self.registry.files.get(path, RegistryEntry()).provides)
+            scope = self.timeline.gdr_store.resolve_change_scope(
+                base_snapshot_id,
+                changed_files=changed_files,
+                removed_fqns=removed_fqns,
+            )
+            self._working_set.ensure_files(set(scope.all_files))
+            self.builder.graph = self._working_set.graph
+
         graph, provides, consumes = self.builder.update(scan, parses)
         
         deleted_fqns = set()
@@ -371,25 +403,44 @@ class CodeGenomeEngine:
         for fqn in deleted_fqns:
             for dep_path in self.registry.get_dependents(fqn):
                 self._flag_broken_proxy(graph, dep_path, fqn)
-                
-        self.clusterer.annotate(graph)
-        
-        intelligence = GraphIntelligence(graph, registry=self.registry)
+
+        use_bounded_patch = (
+            self.config.memory_bounded
+            and self._working_set is not None
+            and base_snapshot_id is not None
+        )
+        if use_bounded_patch:
+            snapshot_id = self.timeline.record_snapshot_patch(
+                base_snapshot_id,
+                changed_files,
+                graph,
+                label=f"surgical_{event_type}",
+            )
+            self._working_set.set_snapshot_id(snapshot_id)
+            self._active_snapshot_id = snapshot_id
+            analysis_graph = self.timeline.load_snapshot(snapshot_id)
+        else:
+            snapshot_id = self.timeline.record_snapshot(graph, label=f"surgical_{event_type}")
+            analysis_graph = graph
+
+        self._persist_gdr(snapshot_id)
+
+        self.clusterer.annotate(analysis_graph)
+        intelligence = GraphIntelligence(analysis_graph, registry=self.registry)
         intelligence.annotate_coupling_metrics()
         report = intelligence.analyze()
-        
         exporter = GraphExporter(
-            graph,
+            analysis_graph,
             report=report,
             workspace_name=self.workspace.name,
         )
-        
-        snapshot_id = self.timeline.record_snapshot(graph, label=f"surgical_{event_type}")
-        self._persist_gdr(snapshot_id)
         export_paths = self._run_exports(exporter)
-        
+
+        if use_bounded_patch:
+            self.builder.graph = self._working_set.graph
+
         return BuildResult(
-            graph=graph,
+            graph=analysis_graph,
             report=report,
             snapshot_id=snapshot_id,
             export_paths=export_paths,
@@ -554,9 +605,22 @@ class CodeGenomeEngine:
         if not snapshots:
             return False
         latest = snapshots[-1]
-        self.builder.graph = self.timeline.load_snapshot(latest.snapshot_id)
+        self._active_snapshot_id = latest.snapshot_id
         self._load_existing_registry(latest.snapshot_id)
+        if self.config.memory_bounded:
+            self._enter_memory_bounded_mode(latest.snapshot_id)
+            return latest.node_count > 0
+        self.builder.graph = self.timeline.load_snapshot(latest.snapshot_id)
         return self.builder.graph.number_of_nodes() > 0
+
+    def _enter_memory_bounded_mode(self, snapshot_id: int) -> None:
+        self._working_set = WorkingSetGraph(
+            self.timeline,
+            snapshot_id,
+            max_files=self.config.max_working_files,
+        )
+        self._working_set.evict_all()
+        self.builder.graph = self._working_set.graph
 
     def _load_existing_registry(self, snapshot_id: int) -> None:
         if self.timeline.gdr_store.has_snapshot(snapshot_id):
