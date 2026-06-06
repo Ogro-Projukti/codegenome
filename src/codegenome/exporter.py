@@ -13,7 +13,7 @@ from typing import Any, Iterable
 import networkx as nx
 
 from codegenome.graph_api import Graph
-from codegenome.intelligence import IntelligenceReport
+from codegenome.intelligence import IntelligenceReport, report_to_dict
 from codegenome.resources import copy_html_asset, render_template
 
 LOG = logging.getLogger(__name__)
@@ -387,36 +387,7 @@ class GraphExporter:
         """Serialize an intelligence report for JSON/HTML exports."""
         if report is None:
             return None
-        return {
-            "dead_code": report.dead_code,
-            "circular_dependencies": report.circular_dependencies,
-            "god_nodes": [
-                {"node": node, "score": score}
-                for node, score in report.god_nodes
-            ],
-            "entry_points": report.entry_points,
-            "orphan_modules": report.orphan_modules,
-            "complexity_rankings": [
-                {"node": node, "complexity": value}
-                for node, value in report.complexity_rankings[:25]
-            ],
-            "churn_rankings": [
-                {"node": node, "churn": value}
-                for node, value in report.churn_rankings[:25]
-            ],
-            "cbo_rankings": [
-                {"node": node, "cbo": value}
-                for node, value in report.cbo_rankings[:25]
-            ],
-            "lcom_rankings": [
-                {"node": node, "lcom": value}
-                for node, value in report.lcom_rankings[:25]
-            ],
-            "tightly_coupled_classes": [
-                {"node": node, "cbo": value}
-                for node, value in report.tightly_coupled_classes[:25]
-            ],
-        }
+        return report_to_dict(report)
 
     def _report_dict(self) -> dict[str, Any] | None:
         return self.report_to_dict(self.report)

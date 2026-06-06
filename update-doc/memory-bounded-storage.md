@@ -519,7 +519,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 1. **GDR per snapshot vs single mutable GDR** — Snapshot-scoped is safer for timeline/MCP history; costs more disk. Mutable “current GDR” is cheaper but complicates `get_changes` / time travel.
 2. **When to populate `graph_node_files`** — At write time (recommended) vs parse-on-read from `node_id` prefixes.
 3. **Eviction policy** — LRU on files vs “change cone only” (drop everything not in last scope).
-4. **Global analyses in bounded mode** — Skip, approximate on loaded region, or run on snapshot metadata computed at full build time.
+4. **Global analyses in bounded mode** — **Resolved:** precomputed at full build, copied on patch; MCP reads stored metrics. `--full-analysis-on-demand` still available for live recompute.
 5. **Proxy / short-name matching** — Scope resolution uses consume strings as stored today; improved symbol resolution (paper limitation §5) affects which dependents are discovered.
 
 ---
@@ -550,13 +550,23 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 - [x] `codegenome mcp-start --memory-bounded` and env vars (`CODEGENOME_MCP_MEMORY_BOUNDED`, etc.)
 - [x] Optional `--full-analysis-on-demand` for global MCP tools
 
-### Phase 5 — scoped surgical analysis (partial)
+### Phase 5 — scoped surgical analysis (shipped)
 
 - [x] Bounded surgical updates analyze the working set only (no full-graph reload)
 - [x] `timeline.export_snapshot_json()` writes `graph.json` from SQLite rows
 - [x] `timeline.export_snapshot_html()` defers node data to sidecar `graph.json` (no `load_snapshot()`)
 - [x] `GDRStore.persist_snapshot_patch()` for snapshot-scoped GDR deltas
 - [x] `_rebuild_incremental_bounded()` for memory-bounded debounced watch rebuilds
+
+### Phase 6 — partial GDR hydrate and precomputed metrics (shipped)
+
+- [x] `GDRBackedRegistry` — lazy `get_provider` / `get_dependents` and `ensure_files()` for scoped hydrate
+- [x] Memory-bounded engine startup uses `create_backed_registry()` instead of full GDR hydrate
+- [x] `snapshot_metrics.py` — `SnapshotMetricsStore` persists full-graph `IntelligenceReport` + betweenness per snapshot
+- [x] Full `build()` writes metrics after `record_snapshot`; patched snapshots **copy** metrics from base (no partial recompute)
+- [x] Bounded surgical/incremental exports use stored report for HTML/JSON metadata
+- [x] Bounded MCP global tools (`get_dead_code`, `get_god_nodes`, `get_circular_deps`, coupling/complexity/churn/betweenness) read stored metrics without `--full-analysis-on-demand`
+- [x] `report_to_dict` / `report_from_dict` in `intelligence.py` for metrics serialization
 
 See [`gdr-persistence-and-live-watch-ignore.md`](gdr-persistence-and-live-watch-ignore.md) for release notes.
 

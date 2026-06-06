@@ -6,12 +6,19 @@ from pathlib import Path
 
 import pytest
 
+from codegenome.builder import GraphBuilder
+from codegenome.parser import SourceParser
+from codegenome.scanner import WorkspaceScanner
+from codegenome.timeline import GraphTimeline
 from codegenome.workspace_info import (
     collect_workspace_info,
+    format_dashboard_summary,
     format_gitignore_files_panel,
+    format_graph_live_summary,
     format_tracked_extensions_panel,
     format_tracked_folders_panel,
     format_workspace_info,
+    load_graph_live_summary,
 )
 
 
@@ -85,3 +92,36 @@ def test_scan_result_panels_show_folders_extensions_and_gitignore(workspace: Pat
     assert ".gitignore" in gitignore
     assert "ignored.txt" in gitignore
     assert ".genomeignore" not in gitignore
+
+
+def test_load_graph_live_summary_without_database(workspace: Path) -> None:
+    summary = load_graph_live_summary(workspace)
+    assert summary.available is False
+    assert "not analyzed" in format_graph_live_summary(summary)
+
+
+def test_format_dashboard_summary_includes_graph_stats(workspace: Path) -> None:
+    scanner = WorkspaceScanner(workspace, cache_db=workspace / ".genome" / "cache.db")
+    scan = scanner.scan(incremental=False)
+    scanner.cache.close()
+
+    parser = SourceParser()
+    parses = {}
+    for record in scan.files:
+        parsed = parser.parse_file(record.absolute_path)
+        if parsed:
+            parses[record.path] = parsed
+
+    graph, _, _ = GraphBuilder().build(scan, parses)
+    timeline = GraphTimeline(workspace / ".genome" / "codegenome.db")
+    timeline.record_snapshot(graph, label="baseline")
+    timeline.close()
+
+    info = collect_workspace_info(workspace)
+    summary = load_graph_live_summary(workspace)
+    rendered = format_dashboard_summary(info, summary)
+
+    assert "Tracking:" in rendered
+    assert "Graph:" in rendered
+    assert f"{graph.number_of_nodes():,}" in rendered or str(graph.number_of_nodes()) in rendered
+    assert summary.available is True

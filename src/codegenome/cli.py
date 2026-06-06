@@ -12,8 +12,20 @@ def cli():
     pass
 
 @cli.command()
+@click.option(
+    "--memory-bounded",
+    is_flag=True,
+    help="Keep only a bounded file working set in memory after the initial build.",
+)
+@click.option(
+    "--max-working-files",
+    default=64,
+    show_default=True,
+    type=int,
+    help="Maximum files resident in memory when --memory-bounded is enabled.",
+)
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
-def analyze(path: str):
+def analyze(path: str, memory_bounded: bool, max_working_files: int):
     """Triggers the tree-sitter scan, builds the ASTs, and saves to the SQLite graph_store.
 
     Args:
@@ -21,7 +33,12 @@ def analyze(path: str):
     """
     click.echo(f"Analyzing workspace at {path}...")
     workspace = Path(path).resolve()
-    config = CodeGenomeConfig(workspace=workspace, export_formats=("json",))
+    config = CodeGenomeConfig(
+        workspace=workspace,
+        export_formats=("json",),
+        memory_bounded=memory_bounded,
+        max_working_files=max(1, max_working_files),
+    )
     engine = CodeGenomeEngine(config)
 
     def on_progress(message: str) -> None:
@@ -197,7 +214,7 @@ def evolve(path: str, live: bool, lan: bool, memory_bounded: bool, max_working_f
     engine = CodeGenomeEngine(config)
     
     click.echo(f"Running initial build for {workspace}...")
-    engine.build(full=False)
+    engine.build(full=True)
     
     from codegenome.network_utils import get_lan_ip
 

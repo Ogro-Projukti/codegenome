@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from datetime import datetime
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,7 @@ from textual.widgets import (
     Label,
     RichLog,
     Static,
+    Switch,
     TabbedContent,
     TabPane,
 )
@@ -31,10 +33,11 @@ from textual.worker import Worker, WorkerState, get_current_worker
 from codegenome.workspace_info import (
     WorkspaceInfo,
     collect_workspace_info,
+    format_dashboard_summary,
     format_gitignore_files_panel,
     format_tracked_extensions_panel,
     format_tracked_folders_panel,
-    format_workspace_summary,
+    load_graph_live_summary,
 )
 
 LogChannel = Literal["analyze", "mcp", "evolve", "general"]
@@ -42,6 +45,7 @@ LogChannel = Literal["analyze", "mcp", "evolve", "general"]
 PAGE_SET = "page-set-workspace"
 PAGE_INFO = "page-workspace-info"
 PAGE_MAIN = "page-main"
+PAGE_MEMORY = "page-memory-setup"
 
 
 @dataclass
@@ -50,6 +54,112 @@ class ActiveProcess:
 
     process: asyncio.subprocess.Process
     channel: LogChannel
+
+
+@dataclass(frozen=True)
+class MemoryModeSettings:
+    """Per-service memory-bounded options for CLI commands."""
+
+    mcp_memory_bounded: bool = False
+    evolve_memory_bounded: bool = False
+    analyze_memory_bounded: bool = False
+    max_working_files: int = 64
+    mcp_full_analysis_on_demand: bool = False
+
+
+def working_set_cli_args(*, memory_bounded: bool, max_working_files: int) -> list[str]:
+    """Return CLI flags for engine commands that use a file working set."""
+    if not memory_bounded:
+        return []
+    return [
+        "--memory-bounded",
+        "--max-working-files",
+        str(max(1, max_working_files)),
+    ]
+
+
+def analyze_mode_cli_args(settings: MemoryModeSettings) -> list[str]:
+    """Return Analyze-specific memory-bounded CLI flags."""
+    return working_set_cli_args(
+        memory_bounded=settings.analyze_memory_bounded,
+        max_working_files=settings.max_working_files,
+    )
+
+
+def evolve_mode_cli_args(settings: MemoryModeSettings) -> list[str]:
+    """Return Live Evolve / graph memory-bounded CLI flags."""
+    return working_set_cli_args(
+        memory_bounded=settings.evolve_memory_bounded,
+        max_working_files=settings.max_working_files,
+    )
+
+
+def mcp_mode_cli_args(settings: MemoryModeSettings) -> list[str]:
+    """Return MCP-specific CLI flags including optional full-analysis on demand."""
+    args: list[str] = []
+    if settings.mcp_memory_bounded:
+        args.append("--memory-bounded")
+    if settings.mcp_memory_bounded and settings.mcp_full_analysis_on_demand:
+        args.append("--full-analysis-on-demand")
+    return args
+
+
+def parse_max_working_files(value: str, *, default: int = 64) -> int:
+    """Parse and clamp the max working files input."""
+    try:
+        parsed = int(value.strip())
+    except ValueError:
+        return default
+    return max(1, parsed)
+
+
+MEMORY_SWITCH_LABELS: dict[str, str] = {
+    "switch-mcp-memory-bounded": "MCP memory-bounded",
+    "switch-evolve-memory-bounded": "Live Evolve memory-bounded",
+    "switch-analyze-memory-bounded": "Analyze memory-bounded",
+    "switch-mcp-full-analysis": "MCP full-graph analysis on demand",
+}
+
+MEMORY_PRESETS: dict[str, MemoryModeSettings] = {
+    "default": MemoryModeSettings(),
+    "all_bounded": MemoryModeSettings(
+        mcp_memory_bounded=True,
+        evolve_memory_bounded=True,
+        analyze_memory_bounded=True,
+        max_working_files=64,
+    ),
+    "full_mcp_bounded_evolve": MemoryModeSettings(
+        evolve_memory_bounded=True,
+        max_working_files=64,
+    ),
+    "bounded_mcp_full_analysis": MemoryModeSettings(
+        mcp_memory_bounded=True,
+        mcp_full_analysis_on_demand=True,
+        max_working_files=64,
+    ),
+}
+
+
+def format_memory_mode_preview(settings: MemoryModeSettings) -> str:
+    """Render a human-readable summary of the active memory settings."""
+    analyze_flags = " ".join(analyze_mode_cli_args(settings)) or "(full graph)"
+    evolve_flags = " ".join(evolve_mode_cli_args(settings)) or "(full graph)"
+    mcp_flags = " ".join(mcp_mode_cli_args(settings)) or "(full graph)"
+
+    lines = [
+        f"[cyan]Analyze[/cyan]  →  {analyze_flags}",
+        f"[cyan]MCP[/cyan]  →  {mcp_flags}",
+        f"[cyan]Live Evolve[/cyan]  →  {evolve_flags}",
+    ]
+    if settings.analyze_memory_bounded or settings.evolve_memory_bounded:
+        lines.append("")
+        lines.append(
+            f"[dim]Working set limit:[/dim] {settings.max_working_files} file(s) "
+            "(Analyze / Evolve only)"
+        )
+    if settings.mcp_memory_bounded and settings.mcp_full_analysis_on_demand:
+        lines.append("[dim]MCP can load the full graph temporarily for global tools.[/dim]")
+    return "\n".join(lines)
 
 
 class ReadOnlyRichLog(RichLog):
@@ -171,6 +281,12 @@ class CodeGenomeTUI(App):
         padding: 0 2;
         margin: 1 1 0 1;
         border: solid green;
+        align: center middle;
+    }
+
+    #workspace-summary {
+        width: 1fr;
+        height: auto;
     }
 
     #commands-container {
@@ -179,6 +295,122 @@ class CodeGenomeTUI(App):
         border: solid blue;
         margin: 1 1 0 1;
         layout: vertical;
+    }
+
+    #page-memory-setup {
+        padding: 1 2;
+        layout: vertical;
+    }
+
+    #memory-setup-topbar {
+        height: auto;
+        layout: horizontal;
+        align: center middle;
+        margin-bottom: 1;
+    }
+
+    .memory-topbar-presets {
+        width: 1fr;
+        height: auto;
+        layout: horizontal;
+        align: left middle;
+    }
+
+    .memory-topbar-presets Button {
+        margin: 0 1 0 0;
+    }
+
+    #btn-back-to-main {
+        margin-left: 1;
+    }
+
+    #memory-setup-columns {
+        height: 1fr;
+        layout: horizontal;
+    }
+
+    .memory-column {
+        width: 1fr;
+        height: 1fr;
+        layout: vertical;
+        min-width: 0;
+    }
+
+    #memory-setup-left {
+        border: solid $warning-darken-2;
+        padding: 1;
+        margin-right: 1;
+    }
+
+    #memory-setup-right {
+        border: solid $warning;
+        padding: 1;
+    }
+
+    #memory-setup-controls {
+        height: 1fr;
+        layout: vertical;
+        align: left top;
+    }
+
+    #memory-setup-controls Label {
+        height: auto;
+        margin: 0 1 0 0;
+        text-align: left;
+    }
+
+    #memory-setup-controls Input {
+        width: 8;
+        min-width: 8;
+        max-width: 8;
+        margin: 0;
+    }
+
+    #memory-setup-controls Switch {
+        margin: 0 1 0 0;
+        width: auto;
+        min-width: 5;
+    }
+
+    .memory-setup-option {
+        height: auto;
+        width: 100%;
+        layout: horizontal;
+        align: left middle;
+        content-align: left middle;
+        margin: 0 0 1 0;
+    }
+
+    .memory-mode-hint {
+        height: auto;
+        margin: 0 0 1 0;
+        color: $text-muted;
+    }
+
+    #memory-setup-summary {
+        height: auto;
+        min-height: 6;
+        border: solid $surface-lighten-1;
+        padding: 1;
+        margin: 1 0;
+        background: $surface-darken-1;
+    }
+
+    #memory-setup-console {
+        height: 1fr;
+        min-height: 10;
+    }
+
+    .memory-console-header {
+        height: auto;
+        layout: horizontal;
+        align: left middle;
+        margin-bottom: 1;
+    }
+
+    .memory-column-title {
+        height: auto;
+        margin-bottom: 1;
     }
 
     .command-row {
@@ -292,6 +524,16 @@ class CodeGenomeTUI(App):
         "btn-evolve-lan",
         "btn-stop-mcp",
         "btn-stop-evolve",
+    )
+
+    MEMORY_SETUP_BUTTON_IDS: tuple[str, ...] = (
+        "btn-preset-defaults",
+        "btn-preset-all-bounded",
+        "btn-preset-full-mcp-bounded-evolve",
+        "btn-preset-bounded-mcp-full-analysis",
+        "btn-memory-refresh",
+        "btn-copy-memory-console",
+        "btn-back-to-main",
     )
 
     def compose(self) -> ComposeResult:
@@ -421,7 +663,91 @@ class CodeGenomeTUI(App):
                 with Horizontal(classes="page-actions"):
                     yield Button("Stop MCP Server", id="btn-stop-mcp", variant="error")
                     yield Button("Stop Live Evolve", id="btn-stop-evolve", variant="error")
+                    yield Button(
+                        "Memory Setup Console",
+                        id="btn-memory-setup",
+                        variant="warning",
+                    )
                     yield Button("Quit", id="btn-quit-main", variant="default")
+
+            with Container(id=PAGE_MEMORY, classes="page"):
+                with Horizontal(id="memory-setup-topbar"):
+                    with Horizontal(classes="memory-topbar-presets"):
+                        yield Button("Defaults", id="btn-preset-defaults", variant="default")
+                        yield Button(
+                            "All Bounded",
+                            id="btn-preset-all-bounded",
+                            variant="default",
+                        )
+                        yield Button(
+                            "Full MCP + Bounded Graph",
+                            id="btn-preset-full-mcp-bounded-evolve",
+                            variant="default",
+                        )
+                        yield Button(
+                            "Bounded MCP + Full Analysis",
+                            id="btn-preset-bounded-mcp-full-analysis",
+                            variant="default",
+                        )
+                        yield Button(
+                            "Refresh Preview",
+                            id="btn-memory-refresh",
+                            variant="default",
+                        )
+                    yield Button("Back to Dashboard", id="btn-back-to-main", variant="success")
+                yield Label("[bold]Memory Setup Console[/bold]")
+                yield Static(
+                    "Control per-service RAM usage. Changes apply immediately to the next "
+                    "Analyze, MCP, or Live Evolve command.",
+                    classes="memory-mode-hint",
+                )
+                with Horizontal(id="memory-setup-columns"):
+                    with Vertical(id="memory-setup-left", classes="memory-column"):
+                        yield Label("[bold]Controls[/bold]", classes="memory-column-title")
+                        with Container(id="memory-setup-controls"):
+                            with Horizontal(classes="memory-setup-option"):
+                                yield Switch(value=False, id="switch-mcp-memory-bounded")
+                                yield Label("MCP server: memory-bounded")
+                            with Horizontal(classes="memory-setup-option"):
+                                yield Switch(value=False, id="switch-evolve-memory-bounded")
+                                yield Label("Live Evolve / graph: memory-bounded")
+                            with Horizontal(classes="memory-setup-option"):
+                                yield Switch(value=False, id="switch-analyze-memory-bounded")
+                                yield Label("Analyze: memory-bounded")
+                            with Horizontal(classes="memory-setup-option"):
+                                yield Label("Max working files (Analyze / Evolve):")
+                                yield Input(
+                                    value="64",
+                                    id="input-max-working-files",
+                                    placeholder="64",
+                                    disabled=True,
+                                )
+                            with Horizontal(classes="memory-setup-option"):
+                                yield Switch(
+                                    value=False,
+                                    id="switch-mcp-full-analysis",
+                                    disabled=True,
+                                )
+                                yield Label(
+                                    "MCP: full-graph analysis on demand (bounded MCP only)"
+                                )
+                            yield Label("[bold]Command preview[/bold]", classes="memory-column-title")
+                            yield Static(id="memory-setup-summary", markup=True)
+                    with Vertical(id="memory-setup-right", classes="memory-column"):
+                        with Horizontal(classes="memory-console-header"):
+                            yield Label("[bold cyan]Settings console[/bold cyan]")
+                            yield Button(
+                                "Copy",
+                                id="btn-copy-memory-console",
+                                variant="default",
+                                classes="copy-btn",
+                            )
+                        yield ReadOnlyRichLog(
+                            id="memory-setup-console",
+                            markup=True,
+                            highlight=False,
+                            wrap=True,
+                        )
 
         yield Footer()
 
@@ -446,9 +772,21 @@ class CodeGenomeTUI(App):
             button_id: self.query_one(f"#{button_id}", Button)
             for button_id in self.COMMAND_BUTTON_IDS
         }
+        self.mcp_memory_bounded_switch = self.query_one("#switch-mcp-memory-bounded", Switch)
+        self.evolve_memory_bounded_switch = self.query_one(
+            "#switch-evolve-memory-bounded", Switch
+        )
+        self.analyze_memory_bounded_switch = self.query_one(
+            "#switch-analyze-memory-bounded", Switch
+        )
+        self.mcp_full_analysis_switch = self.query_one("#switch-mcp-full-analysis", Switch)
+        self.max_working_files_input = self.query_one("#input-max-working-files", Input)
+        self.memory_setup_summary = self.query_one("#memory-setup-summary", Static)
+        self.memory_setup_console = self.query_one("#memory-setup-console", ReadOnlyRichLog)
         self._workspace_path: str | None = None
         self._pending_workspace_info: WorkspaceInfo | None = None
         self._main_initialized = False
+        self._memory_console_initialized = False
 
         self.set_commands_enabled(False)
 
@@ -544,15 +882,28 @@ class CodeGenomeTUI(App):
                 group="workspace-info-bg",
             )
 
+    def refresh_dashboard_summary(self) -> None:
+        """Update the dashboard header with workspace tracking and graph status."""
+        if self._workspace_path is None:
+            return
+        root = Path(self._workspace_path)
+        info = self._pending_workspace_info
+        if info is None or info.root != str(root):
+            info = collect_workspace_info(root)
+        graph = load_graph_live_summary(root)
+        self.workspace_summary.update(format_dashboard_summary(info, graph))
+
     async def _do_background_refresh(self, path: str) -> None:
         """Fetch updated info without blocking or changing UI state heavily."""
         worker = get_current_worker()
-        info = await asyncio.to_thread(collect_workspace_info, Path(path))
+        info, graph = await asyncio.gather(
+            asyncio.to_thread(collect_workspace_info, Path(path)),
+            asyncio.to_thread(load_graph_live_summary, Path(path)),
+        )
         if worker.is_cancelled:
             return
 
-        # Only update the summary bar to avoid flashing the UI
-        self.workspace_summary.update(format_workspace_summary(info))
+        self.workspace_summary.update(format_dashboard_summary(info, graph))
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         """Re-enable controls and surface workspace scan failures."""
@@ -580,7 +931,7 @@ class CodeGenomeTUI(App):
             return
 
         self._workspace_path = info.root
-        self.workspace_summary.update(format_workspace_summary(info))
+        self.refresh_dashboard_summary()
         self.show_page(PAGE_MAIN)
 
         if getattr(self, "_workspace_poll_timer", None) is None:
@@ -591,7 +942,12 @@ class CodeGenomeTUI(App):
         if not self._main_initialized:
             self._main_initialized = True
             self.write_log("general", "[bold green]CodeGenome TUI initialized.[/bold green]")
-            self.write_log("general", "Use Analyze, MCP, or Live Evolve from the command buttons.")
+            self.write_log(
+                "general",
+                "Use Analyze, MCP, or Live Evolve from the command buttons. "
+                "Open Memory Setup Console to configure per-service RAM usage.",
+            )
+            self.refresh_memory_setup_preview()
             self.write_log("analyze", "[dim]Analyze output appears here.[/dim]")
             self.write_log("mcp", "[dim]MCP server output appears here.[/dim]")
             self.write_log("evolve", "[dim]Live Evolve output appears here.[/dim]")
@@ -614,6 +970,132 @@ class CodeGenomeTUI(App):
             return
         self.copy_to_clipboard(text)
         self.notify(f"Copied {panel_name} output to clipboard!")
+
+    def get_memory_mode_settings(self) -> MemoryModeSettings:
+        """Read the current memory mode controls from the dashboard."""
+        return MemoryModeSettings(
+            mcp_memory_bounded=bool(self.mcp_memory_bounded_switch.value),
+            evolve_memory_bounded=bool(self.evolve_memory_bounded_switch.value),
+            analyze_memory_bounded=bool(self.analyze_memory_bounded_switch.value),
+            max_working_files=parse_max_working_files(self.max_working_files_input.value),
+            mcp_full_analysis_on_demand=bool(self.mcp_full_analysis_switch.value),
+        )
+
+    def log_memory_console(self, message: str) -> None:
+        """Append a timestamped line to the Memory Setup console."""
+        stamp = datetime.now().strftime("%H:%M:%S")
+        self.memory_setup_console.write(f"[dim]{stamp}[/dim]  {message}")
+
+    def apply_memory_settings(self, settings: MemoryModeSettings) -> None:
+        """Push settings into the Memory Setup controls."""
+        self._suppress_memory_switch_log = True
+        try:
+            self.mcp_memory_bounded_switch.value = settings.mcp_memory_bounded
+            self.evolve_memory_bounded_switch.value = settings.evolve_memory_bounded
+            self.analyze_memory_bounded_switch.value = settings.analyze_memory_bounded
+            self.mcp_full_analysis_switch.value = settings.mcp_full_analysis_on_demand
+            self.max_working_files_input.value = str(settings.max_working_files)
+            self.update_memory_mode_controls()
+        finally:
+            self._suppress_memory_switch_log = False
+
+    def refresh_memory_setup_preview(self) -> None:
+        """Update the Memory Setup panel command preview."""
+        self.memory_setup_summary.update(
+            format_memory_mode_preview(self.get_memory_mode_settings())
+        )
+
+    def show_memory_setup_console(self) -> None:
+        """Open the dedicated Memory Setup console page."""
+        self.show_page(PAGE_MEMORY)
+        if not self._memory_console_initialized:
+            self._memory_console_initialized = True
+            self.memory_setup_console.clear()
+            self.log_memory_console(
+                "[bold green]Memory Setup Console ready.[/bold green] "
+                "Use switches, presets, or max-files input below."
+            )
+            self.log_memory_console(
+                "Tip: choose [cyan]Full MCP + Bounded Graph[/cyan] for full MCP RAM "
+                "with a bounded live graph."
+            )
+        self.refresh_memory_setup_preview()
+        self.log_memory_console("Current settings loaded. Adjust controls to update.")
+
+    def update_memory_mode_controls(self) -> None:
+        """Enable or disable memory-bounded sub-options."""
+        settings = self.get_memory_mode_settings()
+        uses_working_set = (
+            settings.analyze_memory_bounded or settings.evolve_memory_bounded
+        )
+        self.max_working_files_input.disabled = not uses_working_set
+        self.mcp_full_analysis_switch.disabled = not settings.mcp_memory_bounded
+        if not settings.mcp_memory_bounded:
+            self.mcp_full_analysis_switch.value = False
+        self.refresh_memory_setup_preview()
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        """Keep dependent memory mode controls in sync."""
+        switch_id = event.switch.id or ""
+        if switch_id in MEMORY_SWITCH_LABELS:
+            if getattr(self, "_suppress_memory_switch_log", False):
+                self.update_memory_mode_controls()
+                return
+            label = MEMORY_SWITCH_LABELS[switch_id]
+            state = "enabled" if event.value else "disabled"
+            self.update_memory_mode_controls()
+            if self.pages.current == PAGE_MEMORY:
+                self.log_memory_console(f"{label}: [cyan]{state}[/cyan]")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Refresh preview when working-set limits change."""
+        if event.input.id == "input-max-working-files":
+            self.refresh_memory_setup_preview()
+            if self.pages.current == PAGE_MEMORY:
+                value = parse_max_working_files(event.value)
+                self.log_memory_console(
+                    f"Max working files: [cyan]{value}[/cyan]"
+                )
+
+    def _handle_memory_setup_button(self, button_id: str) -> None:
+        """Handle buttons on the Memory Setup console page."""
+        preset_map = {
+            "btn-preset-defaults": ("default", "Defaults"),
+            "btn-preset-all-bounded": ("all_bounded", "All Bounded"),
+            "btn-preset-full-mcp-bounded-evolve": (
+                "full_mcp_bounded_evolve",
+                "Full MCP + Bounded Graph",
+            ),
+            "btn-preset-bounded-mcp-full-analysis": (
+                "bounded_mcp_full_analysis",
+                "Bounded MCP + Full Analysis",
+            ),
+        }
+        if button_id in preset_map:
+            preset_key, preset_label = preset_map[button_id]
+            self.apply_memory_settings(MEMORY_PRESETS[preset_key])
+            self.log_memory_console(f"Applied preset: [bold]{preset_label}[/bold]")
+            self.notify(f"Memory preset applied: {preset_label}")
+            return
+        if button_id == "btn-memory-refresh":
+            self.refresh_memory_setup_preview()
+            self.log_memory_console("Preview refreshed.")
+            settings = self.get_memory_mode_settings()
+            self.log_memory_console(
+                f"Analyze → {'bounded' if settings.analyze_memory_bounded else 'full graph'}; "
+                f"MCP → {'bounded' if settings.mcp_memory_bounded else 'full graph'}; "
+                f"Evolve → {'bounded' if settings.evolve_memory_bounded else 'full graph'}"
+            )
+            return
+        if button_id == "btn-back-to-main":
+            self.show_page(PAGE_MAIN)
+            self.log_memory_console("Returned to dashboard. Settings are saved for next commands.")
+            self.write_log(
+                "general",
+                "[cyan]Memory settings updated.[/cyan] "
+                "Run Analyze, MCP, or Live Evolve to use them.",
+            )
+            self.focus_log_tab("general")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle command button presses."""
@@ -642,6 +1124,13 @@ class CodeGenomeTUI(App):
         elif button_id == "btn-copy-general":
             self.copy_panel_output(self.log_widgets["general"], "General Log")
             return
+        elif button_id == "btn-copy-memory-console":
+            self.copy_panel_output(self.memory_setup_console, "Memory Setup Console")
+            return
+
+        if button_id in self.MEMORY_SETUP_BUTTON_IDS:
+            self._handle_memory_setup_button(button_id)
+            return
 
         if button_id == "btn-set-workspace":
             self.refresh_workspace_info()
@@ -659,11 +1148,21 @@ class CodeGenomeTUI(App):
             self.show_page(PAGE_SET)
             return
 
+        if button_id == "btn-memory-setup":
+            self.show_memory_setup_console()
+            return
+
         workspace = self.get_workspace_path()
+        memory_settings = self.get_memory_mode_settings()
 
         if button_id == "btn-analyze":
             self.run_command(
-                ["codegenome", "analyze", workspace],
+                [
+                    "codegenome",
+                    "analyze",
+                    *analyze_mode_cli_args(memory_settings),
+                    workspace,
+                ],
                 channel="analyze",
             )
         elif button_id == "btn-export":
@@ -687,6 +1186,7 @@ class CodeGenomeTUI(App):
                     "http",
                     "--port",
                     "7331",
+                    *mcp_mode_cli_args(memory_settings),
                 ],
                 channel="mcp",
                 is_background=True,
@@ -703,19 +1203,33 @@ class CodeGenomeTUI(App):
                     "--port",
                     "7331",
                     "--lan",
+                    *mcp_mode_cli_args(memory_settings),
                 ],
                 channel="mcp",
                 is_background=True,
             )
         elif button_id == "btn-evolve-local":
             self.run_command(
-                ["codegenome", "evolve", "--live", workspace],
+                [
+                    "codegenome",
+                    "evolve",
+                    "--live",
+                    *evolve_mode_cli_args(memory_settings),
+                    workspace,
+                ],
                 channel="evolve",
                 is_background=True,
             )
         elif button_id == "btn-evolve-lan":
             self.run_command(
-                ["codegenome", "evolve", "--live", "--lan", workspace],
+                [
+                    "codegenome",
+                    "evolve",
+                    "--live",
+                    "--lan",
+                    *evolve_mode_cli_args(memory_settings),
+                    workspace,
+                ],
                 channel="evolve",
                 is_background=True,
             )
@@ -869,6 +1383,8 @@ class CodeGenomeTUI(App):
                     channel,
                     f"[[bold {status_color}]Process exited with code {process.returncode}[/bold {status_color}]]",
                 )
+                if process.returncode == 0 and channel in ("analyze", "evolve"):
+                    self.refresh_dashboard_summary()
         finally:
             if process is not None:
                 self._untrack_subprocess(process)

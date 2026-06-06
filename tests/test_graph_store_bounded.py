@@ -9,6 +9,8 @@ import pytest
 from codegenome.builder import file_node_id
 from codegenome.graph_api import create_graph
 from codegenome.graph_store import GraphStore, GraphStoreError
+from codegenome.intelligence import GraphIntelligence
+from codegenome.snapshot_metrics import SnapshotMetrics
 from codegenome.timeline import GraphTimeline
 
 
@@ -44,7 +46,12 @@ def sample_db(tmp_path: Path) -> Path:
 
     db_path = tmp_path / "bounded.db"
     timeline = GraphTimeline(db_path)
-    timeline.record_snapshot(graph, label="baseline")
+    snapshot_id = timeline.record_snapshot(graph, label="baseline")
+    report = GraphIntelligence(graph).analyze()
+    timeline.metrics_store.persist_snapshot(
+        snapshot_id,
+        SnapshotMetrics(report=report),
+    )
     timeline.close()
     return db_path
 
@@ -84,11 +91,30 @@ def test_bounded_search_nodes(sample_db: Path) -> None:
         store.close()
 
 
-def test_bounded_global_analysis_requires_opt_in(sample_db: Path) -> None:
+def test_bounded_global_analysis_uses_stored_metrics(sample_db: Path) -> None:
     store = GraphStore(sample_db, memory_bounded=True, full_analysis_on_demand=False)
     store.open()
     try:
-        with pytest.raises(GraphStoreError, match="memory-bounded"):
+        dead = store.get_dead_code()
+        assert isinstance(dead, list)
+        entry_points = store.get_entry_points()
+        assert isinstance(entry_points, list)
+    finally:
+        store.close()
+
+
+def test_bounded_global_analysis_without_metrics_raises(tmp_path: Path) -> None:
+    graph = create_graph("igraph")
+    graph.add_node("file:alpha.py", node_type="file", file_path="alpha.py")
+    db_path = tmp_path / "no-metrics.db"
+    timeline = GraphTimeline(db_path)
+    timeline.record_snapshot(graph, label="baseline")
+    timeline.close()
+
+    store = GraphStore(db_path, memory_bounded=True, full_analysis_on_demand=False)
+    store.open()
+    try:
+        with pytest.raises(GraphStoreError, match="precomputed global metrics"):
             store.get_dead_code()
     finally:
         store.close()

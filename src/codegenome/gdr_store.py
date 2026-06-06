@@ -105,6 +105,23 @@ class GDRStore:
         ).fetchone()
         return row is not None
 
+    @staticmethod
+    def _provide_rows(snapshot_id: int, registry: GlobalDependencyRegistry) -> list[tuple[int, str, str]]:
+        """Build provider rows from the canonical FQN index (one provider per FQN)."""
+        return [
+            (snapshot_id, fqn, file_path)
+            for fqn, file_path in sorted(registry.providers.items())
+        ]
+
+    @staticmethod
+    def _consume_rows(snapshot_id: int, registry: GlobalDependencyRegistry) -> list[tuple[int, str, str]]:
+        """Build consumer rows from the canonical reverse index."""
+        rows: list[tuple[int, str, str]] = []
+        for fqn in sorted(registry.consumers):
+            for file_path in sorted(registry.consumers[fqn]):
+                rows.append((snapshot_id, fqn, file_path))
+        return rows
+
     def persist_snapshot(
         self,
         snapshot_id: int,
@@ -115,10 +132,8 @@ class GDRStore:
         """Write full GDR state for a snapshot from an in-memory registry."""
         timestamp = updated_at if updated_at is not None else time.time()
         file_rows: list[tuple[int, str, str, str, float]] = []
-        provide_rows: list[tuple[int, str, str]] = []
-        consume_rows: list[tuple[int, str, str]] = []
 
-        for file_path, entry in registry.files.items():
+        for file_path, entry in sorted(registry.files.items()):
             provides = sorted(entry.provides)
             consumes = sorted(entry.consumes)
             file_rows.append(
@@ -130,10 +145,9 @@ class GDRStore:
                     timestamp,
                 )
             )
-            for fqn in provides:
-                provide_rows.append((snapshot_id, fqn, file_path))
-            for fqn in consumes:
-                consume_rows.append((snapshot_id, fqn, file_path))
+
+        provide_rows = self._provide_rows(snapshot_id, registry)
+        consume_rows = self._consume_rows(snapshot_id, registry)
 
         self._conn.execute("DELETE FROM gdr_files WHERE snapshot_id = ?", (snapshot_id,))
         self._conn.execute("DELETE FROM gdr_provides WHERE snapshot_id = ?", (snapshot_id,))
@@ -236,7 +250,6 @@ class GDRStore:
             )
 
         file_rows: list[tuple[int, str, str, str, float]] = []
-        provide_rows: list[tuple[int, str, str]] = []
         consume_rows: list[tuple[int, str, str]] = []
         for file_path in sorted(changed):
             entry = registry.files.get(file_path)
@@ -253,8 +266,6 @@ class GDRStore:
                     timestamp,
                 )
             )
-            for fqn in provides:
-                provide_rows.append((snapshot_id, fqn, file_path))
             for fqn in consumes:
                 consume_rows.append((snapshot_id, fqn, file_path))
 
@@ -266,11 +277,27 @@ class GDRStore:
                 """,
                 file_rows,
             )
-        if provide_rows:
+
+        rebound_fqns = sorted(
+            fqn for fqn, file_path in registry.providers.items() if file_path in changed
+        )
+        if rebound_fqns:
+            placeholders = ", ".join("?" for _ in rebound_fqns)
+            self._conn.execute(
+                f"""
+                DELETE FROM gdr_provides
+                WHERE snapshot_id = ? AND fqn IN ({placeholders})
+                """,
+                (snapshot_id, *rebound_fqns),
+            )
             self._conn.executemany(
                 "INSERT INTO gdr_provides (snapshot_id, fqn, file_path) VALUES (?, ?, ?)",
-                provide_rows,
+                [
+                    (snapshot_id, fqn, registry.providers[fqn])
+                    for fqn in rebound_fqns
+                ],
             )
+
         if consume_rows:
             self._conn.executemany(
                 "INSERT INTO gdr_consumes (snapshot_id, fqn, file_path) VALUES (?, ?, ?)",
@@ -408,3 +435,51 @@ class GDRStore:
                 registry.consumers[fqn] = dependents
 
         return registry
+
+    def create_backed_registry(self, snapshot_id: int) -> GDRBackedRegistry:
+        """Return an empty in-memory registry with lazy GDR lookups."""
+        return GDRBackedRegistry(self, snapshot_id)
+
+
+class GDRBackedRegistry(GlobalDependencyRegistry):
+    """Partial in-memory GDR with on-demand provider and dependent lookups."""
+
+    def __init__(self, store: GDRStore, snapshot_id: int) -> None:
+        super().__init__()
+        self._store = store
+        self._snapshot_id = snapshot_id
+
+    def get_provider(self, fqn: str) -> str | None:
+        if fqn in self.providers:
+            return self.providers[fqn]
+        provider = self._store.get_provider(self._snapshot_id, fqn)
+        if provider is not None:
+            self.providers[fqn] = provider
+        return provider
+
+    def get_dependents(self, fqn: str) -> set[str]:
+        cached = self.consumers.get(fqn)
+        if cached is not None:
+            return set(cached)
+        dependents = self._store.get_dependents(self._snapshot_id, fqn)
+        if dependents:
+            self.consumers[fqn] = set(dependents)
+        return dependents
+
+    def ensure_files(self, file_paths: set[str]) -> None:
+        """Hydrate file entries and referenced FQN indexes for a path set."""
+        if not file_paths:
+            return
+        missing = {path for path in file_paths if path not in self.files}
+        if not missing:
+            return
+        partial = self._store.hydrate_registry(self._snapshot_id, missing)
+        for path, entry in partial.files.items():
+            self.files[path] = RegistryEntry(
+                set(entry.provides),
+                set(entry.consumes),
+            )
+        for fqn, provider_path in partial.providers.items():
+            self.providers[fqn] = provider_path
+        for fqn, paths in partial.consumers.items():
+            self.consumers.setdefault(fqn, set()).update(paths)

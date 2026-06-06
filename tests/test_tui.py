@@ -11,7 +11,113 @@ from textual.geometry import Offset
 from textual.selection import Selection
 from textual.strip import Strip
 
-from codegenome.tui import ActiveProcess, CodeGenomeTUI, ReadOnlyRichLog
+from codegenome.tui import (
+    MEMORY_PRESETS,
+    ActiveProcess,
+    CodeGenomeTUI,
+    MemoryModeSettings,
+    ReadOnlyRichLog,
+    analyze_mode_cli_args,
+    evolve_mode_cli_args,
+    format_memory_mode_preview,
+    mcp_mode_cli_args,
+    parse_max_working_files,
+    working_set_cli_args,
+)
+
+
+def test_working_set_cli_args_empty_when_disabled() -> None:
+    assert working_set_cli_args(memory_bounded=False, max_working_files=64) == []
+
+
+def test_working_set_cli_args_includes_flags_when_enabled() -> None:
+    assert working_set_cli_args(memory_bounded=True, max_working_files=32) == [
+        "--memory-bounded",
+        "--max-working-files",
+        "32",
+    ]
+
+
+def test_mcp_and_evolve_memory_modes_are_independent() -> None:
+    """Full MCP with bounded Live Evolve graph (user's mixed mode)."""
+    settings = MemoryModeSettings(
+        mcp_memory_bounded=False,
+        evolve_memory_bounded=True,
+        max_working_files=48,
+    )
+    assert mcp_mode_cli_args(settings) == []
+    assert evolve_mode_cli_args(settings) == [
+        "--memory-bounded",
+        "--max-working-files",
+        "48",
+    ]
+
+
+def test_mcp_mode_cli_args_bounded_without_working_set_limit() -> None:
+    settings = MemoryModeSettings(mcp_memory_bounded=True)
+    assert mcp_mode_cli_args(settings) == ["--memory-bounded"]
+
+
+def test_mcp_mode_cli_args_adds_full_analysis_flag() -> None:
+    settings = MemoryModeSettings(
+        mcp_memory_bounded=True,
+        mcp_full_analysis_on_demand=True,
+    )
+    assert mcp_mode_cli_args(settings) == [
+        "--memory-bounded",
+        "--full-analysis-on-demand",
+    ]
+
+
+def test_mcp_mode_cli_args_ignores_full_analysis_when_not_bounded() -> None:
+    settings = MemoryModeSettings(
+        mcp_memory_bounded=False,
+        mcp_full_analysis_on_demand=True,
+    )
+    assert mcp_mode_cli_args(settings) == []
+
+
+def test_analyze_mode_cli_args_respects_analyze_toggle_only() -> None:
+    settings = MemoryModeSettings(
+        analyze_memory_bounded=True,
+        evolve_memory_bounded=False,
+        max_working_files=16,
+    )
+    assert analyze_mode_cli_args(settings) == [
+        "--memory-bounded",
+        "--max-working-files",
+        "16",
+    ]
+    assert evolve_mode_cli_args(settings) == []
+
+
+def test_memory_presets_include_mixed_mode() -> None:
+    preset = MEMORY_PRESETS["full_mcp_bounded_evolve"]
+    assert preset.mcp_memory_bounded is False
+    assert preset.evolve_memory_bounded is True
+    assert evolve_mode_cli_args(preset)
+    assert mcp_mode_cli_args(preset) == []
+
+
+def test_format_memory_mode_preview_shows_mixed_modes() -> None:
+    preview = format_memory_mode_preview(
+        MemoryModeSettings(
+            mcp_memory_bounded=False,
+            evolve_memory_bounded=True,
+            analyze_memory_bounded=False,
+            max_working_files=48,
+        )
+    )
+    assert "MCP" in preview
+    assert "(full graph)" in preview
+    assert "--memory-bounded" in preview
+    assert "48" in preview
+
+
+def test_parse_max_working_files_clamps_and_defaults() -> None:
+    assert parse_max_working_files("128") == 128
+    assert parse_max_working_files("0") == 1
+    assert parse_max_working_files("bad", default=64) == 64
 
 
 def test_bindings_use_ctrl_c_for_copy_not_quit() -> None:

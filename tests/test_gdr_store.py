@@ -9,7 +9,7 @@ import pytest
 from codegenome.builder import GraphBuilder
 from codegenome.core import CodeGenomeConfig, CodeGenomeEngine
 from codegenome.parser import SourceParser
-from codegenome.registry import GlobalDependencyRegistry
+from codegenome.registry import GlobalDependencyRegistry, RegistryEntry
 from codegenome.scanner import WorkspaceScanner
 from codegenome.timeline import GraphTimeline
 
@@ -129,6 +129,30 @@ def test_gdr_store_resolve_change_scope(
     assert scope.all_files >= {"beta.py", "alpha.py"}
 
 
+def test_gdr_backed_registry_lazy_lookup(
+    tmp_path: Path,
+    two_file_workspace: tuple[Path, object, dict[str, set[str]], dict[str, set[str]]],
+) -> None:
+    _, graph, provides, consumes = two_file_workspace
+    timeline = GraphTimeline(tmp_path / "codegenome.db")
+    registry = GlobalDependencyRegistry()
+    _populate_registry(registry, provides, consumes)
+
+    snapshot_id = timeline.record_snapshot(graph, label="baseline")
+    store = timeline.gdr_store
+    store.persist_snapshot(snapshot_id, registry)
+
+    backed = store.create_backed_registry(snapshot_id)
+    assert backed.get_provider("helper") == "beta.py"
+    assert "alpha.py" in backed.get_dependents("helper")
+
+    backed.ensure_files({"alpha.py"})
+    timeline.close()
+
+    assert "alpha.py" in backed.files
+    assert backed.files["alpha.py"].provides
+
+
 def test_gdr_store_partial_hydrate(
     tmp_path: Path,
     two_file_workspace: tuple[Path, object, dict[str, set[str]], dict[str, set[str]]],
@@ -195,6 +219,47 @@ def test_gdr_store_persist_snapshot_patch(
     assert full.files["beta.py"].provides == {"renamed_helper"}
     assert full.get_provider("renamed_helper") == "beta.py"
     assert "alpha.py" not in full.get_dependents("renamed_helper")
+
+
+def test_persist_snapshot_uses_canonical_providers_when_files_disagree(
+    tmp_path: Path,
+) -> None:
+    timeline = GraphTimeline(tmp_path / "codegenome.db")
+    registry = GlobalDependencyRegistry()
+    registry.files["alpha.py"] = RegistryEntry({"helper"}, set())
+    registry.files["beta.py"] = RegistryEntry({"helper"}, set())
+    registry.providers["helper"] = "beta.py"
+
+    store = timeline.gdr_store
+    store.persist_snapshot(1, registry)
+    assert store.get_provider(1, "helper") == "beta.py"
+    timeline.close()
+
+
+def test_persist_snapshot_patch_rebinds_fqn_from_unchanged_file(
+    tmp_path: Path,
+    two_file_workspace: tuple[Path, object, dict[str, set[str]], dict[str, set[str]]],
+) -> None:
+    _, graph, provides, consumes = two_file_workspace
+    timeline = GraphTimeline(tmp_path / "codegenome.db")
+    registry = GlobalDependencyRegistry()
+    _populate_registry(registry, provides, consumes)
+
+    base_id = timeline.record_snapshot(graph, label="baseline")
+    store = timeline.gdr_store
+    store.persist_snapshot(base_id, registry)
+    assert store.get_provider(base_id, "helper") == "beta.py"
+
+    registry.files["alpha.py"] = RegistryEntry(
+        {"helper"},
+        registry.files["alpha.py"].consumes,
+    )
+    registry.providers["helper"] = "alpha.py"
+    patched_id = timeline.record_snapshot(graph, label="patched")
+    store.persist_snapshot_patch(base_id, patched_id, {"alpha.py"}, registry)
+
+    assert store.get_provider(patched_id, "helper") == "alpha.py"
+    timeline.close()
 
 
 def test_engine_loads_persisted_registry_on_startup(

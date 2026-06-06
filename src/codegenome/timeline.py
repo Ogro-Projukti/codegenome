@@ -17,6 +17,7 @@ from typing import Any
 from codegenome.builder import file_node_id
 from codegenome.exporter import GraphExporter, GraphStatistics
 from codegenome.gdr_store import GDRStore
+from codegenome.snapshot_metrics import SnapshotMetricsStore
 from codegenome.graph_api import Graph, create_graph
 from codegenome.graph_loader import node_file_path
 from codegenome.intelligence import IntelligenceReport
@@ -101,11 +102,18 @@ class GraphTimeline:
         self._initialize_schema()
         self._gdr_store = GDRStore(self._conn)
         self._gdr_store.initialize_schema()
+        self._metrics_store = SnapshotMetricsStore(self._conn)
+        self._metrics_store.initialize_schema()
 
     @property
     def gdr_store(self) -> GDRStore:
         """Snapshot-scoped Global Dependency Registry persistence."""
         return self._gdr_store
+
+    @property
+    def metrics_store(self) -> SnapshotMetricsStore:
+        """Precomputed global intelligence metrics per snapshot."""
+        return self._metrics_store
 
     def close(self) -> None:
         """Close the database connection."""
@@ -419,6 +427,7 @@ class GraphTimeline:
             changed_node_ids,
             fragment,
         )
+        self._metrics_store.copy_snapshot(base_snapshot_id, snapshot_id)
         self._conn.commit()
         return snapshot_id
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from codegenome.gitignore import DEFAULT_IGNORE_PATTERNS, IGNORE_FILENAMES, IgnoreMatcher
@@ -30,6 +31,18 @@ class WorkspaceInfo:
     ignore_files: tuple[IgnoreFileInfo, ...] = ()
     tracked_directories: tuple[str, ...] = ()
     tracked_files: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class GraphLiveSummary:
+    """Latest graph snapshot metadata for dashboard display."""
+
+    available: bool
+    snapshot_id: int | None = None
+    label: str | None = None
+    node_count: int = 0
+    edge_count: int = 0
+    updated_at: float | None = None
 
 
 def collect_workspace_info(root: Path | str) -> WorkspaceInfo:
@@ -207,6 +220,55 @@ def format_workspace_info(info: WorkspaceInfo) -> str:
     return "\n".join(lines)
 
 
+def load_graph_live_summary(root: Path | str) -> GraphLiveSummary:
+    """Read the latest graph snapshot stats from `.genome/codegenome.db`."""
+    workspace = Path(root).expanduser()
+    db_path = workspace / ".genome" / "codegenome.db"
+    if not db_path.is_file():
+        return GraphLiveSummary(available=False)
+
+    try:
+        from codegenome.timeline import GraphTimeline
+
+        timeline = GraphTimeline(db_path)
+        try:
+            snapshots = timeline.list_snapshots()
+        finally:
+            timeline.close()
+    except OSError:
+        return GraphLiveSummary(available=False)
+
+    if not snapshots:
+        return GraphLiveSummary(available=False)
+
+    latest = snapshots[-1]
+    return GraphLiveSummary(
+        available=True,
+        snapshot_id=latest.snapshot_id,
+        label=latest.label,
+        node_count=latest.node_count,
+        edge_count=latest.edge_count,
+        updated_at=latest.created_at,
+    )
+
+
+def format_graph_live_summary(summary: GraphLiveSummary) -> str:
+    """Render live graph snapshot status for the dashboard header."""
+    if not summary.available:
+        return "[bold magenta]Graph:[/bold magenta] [dim]not analyzed yet[/dim]"
+
+    label = f" · {summary.label}" if summary.label else ""
+    updated = ""
+    if summary.updated_at is not None:
+        updated = f" · updated {datetime.fromtimestamp(summary.updated_at).strftime('%H:%M:%S')}"
+    return (
+        f"[bold magenta]Graph:[/bold magenta] "
+        f"[cyan]{summary.node_count:,}[/cyan] nodes · "
+        f"[cyan]{summary.edge_count:,}[/cyan] edges · "
+        f"snapshot #{summary.snapshot_id}{label}{updated}"
+    )
+
+
 def format_workspace_summary(info: WorkspaceInfo) -> str:
     """Render a compact one-line workspace summary for the main dashboard."""
     if info.error:
@@ -217,9 +279,21 @@ def format_workspace_summary(info: WorkspaceInfo) -> str:
     return (
         f"[bold]Workspace:[/bold] {info.root}  "
         f"[dim]|[/dim]  "
-        f"⏳ [bold cyan]Live Tracking:[/bold cyan] {file_count} file{'s' if file_count != 1 else ''} in "
+        f"[bold cyan]Tracking:[/bold cyan] {file_count} file{'s' if file_count != 1 else ''} in "
         f"{dir_count} director{'ies' if dir_count != 1 else 'y'}"
     )
+
+
+def format_dashboard_summary(
+    info: WorkspaceInfo,
+    graph: GraphLiveSummary | None = None,
+) -> str:
+    """Render workspace tracking plus live graph snapshot status."""
+    workspace_line = format_workspace_summary(info)
+    if info.error:
+        return workspace_line
+    graph_line = format_graph_live_summary(graph or GraphLiveSummary(available=False))
+    return f"{workspace_line}  [dim]|[/dim]  {graph_line}"
 
 
 def _folder_label(directory: str) -> str:

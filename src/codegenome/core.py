@@ -24,7 +24,9 @@ from codegenome.parser import SourceParser
 from codegenome.scanner import ScanResult, WorkspaceScanner, FileRecord
 from codegenome.live_graph_monitor import LiveGraphMonitor
 from codegenome.timeline import GraphTimeline
+from codegenome.gdr_store import GDRBackedRegistry
 from codegenome.registry import GlobalDependencyRegistry, RegistryEntry
+from codegenome.snapshot_metrics import SnapshotMetrics
 from codegenome.working_set import WorkingSetGraph
 
 LOG = logging.getLogger(__name__)
@@ -301,6 +303,7 @@ class CodeGenomeEngine:
 
         snapshot_id = self.timeline.record_snapshot(graph, label=label)
         self._persist_gdr(snapshot_id)
+        self._persist_snapshot_metrics(snapshot_id, graph, intel_report)
         self._active_snapshot_id = snapshot_id
         if self.config.memory_bounded:
             self._enter_memory_bounded_mode(snapshot_id)
@@ -398,6 +401,7 @@ class CodeGenomeEngine:
                 removed_fqns=removed_fqns,
             )
             self._working_set.ensure_files(set(scope.all_files))
+            self._ensure_registry_files(set(scope.all_files))
             self.builder.graph = self._working_set.graph
 
         graph, provides, consumes = self.builder.update(scan, parses)
@@ -438,12 +442,8 @@ class CodeGenomeEngine:
             changed_files=changed_files if use_bounded_patch else None,
         )
 
-        self.clusterer.annotate(analysis_graph)
-        intelligence = GraphIntelligence(analysis_graph, registry=self.registry)
-        intelligence.annotate_coupling_metrics()
-        report = intelligence.analyze()
-
         if use_bounded_patch:
+            report = self._load_stored_report(snapshot_id) or IntelligenceReport()
             export_paths = self._run_exports_bounded(snapshot_id, analysis_graph, report)
             self.builder.graph = self._working_set.graph
             return BuildResult(
@@ -452,6 +452,11 @@ class CodeGenomeEngine:
                 snapshot_id=snapshot_id,
                 export_paths=export_paths,
             )
+
+        self.clusterer.annotate(analysis_graph)
+        intelligence = GraphIntelligence(analysis_graph, registry=self.registry)
+        intelligence.annotate_coupling_metrics()
+        report = intelligence.analyze()
 
         exporter = GraphExporter(
             analysis_graph,
@@ -644,8 +649,34 @@ class CodeGenomeEngine:
         self.builder.graph = self._working_set.graph
 
     def _load_existing_registry(self, snapshot_id: int) -> None:
-        if self.timeline.gdr_store.has_snapshot(snapshot_id):
+        if not self.timeline.gdr_store.has_snapshot(snapshot_id):
+            return
+        if self.config.memory_bounded:
+            self.registry = self.timeline.gdr_store.create_backed_registry(snapshot_id)
+        else:
             self.registry = self.timeline.gdr_store.hydrate_registry(snapshot_id)
+
+    def _ensure_registry_files(self, file_paths: set[str]) -> None:
+        if isinstance(self.registry, GDRBackedRegistry):
+            self.registry.ensure_files(file_paths)
+
+    def _load_stored_report(self, snapshot_id: int) -> IntelligenceReport | None:
+        metrics = self.timeline.metrics_store.load_snapshot(snapshot_id)
+        return metrics.report if metrics is not None else None
+
+    def _persist_snapshot_metrics(
+        self,
+        snapshot_id: int,
+        graph: object,
+        report: IntelligenceReport,
+    ) -> None:
+        betweenness = tuple(
+            self.clusterer.betweenness_rankings(graph, include_generated=False)
+        )
+        self.timeline.metrics_store.persist_snapshot(
+            snapshot_id,
+            SnapshotMetrics(report=report, betweenness_rankings=betweenness),
+        )
 
     def _persist_gdr(
         self,
@@ -744,6 +775,7 @@ class CodeGenomeEngine:
                 removed_fqns=removed_fqns,
             )
             self._working_set.ensure_files(set(scope.all_files))
+            self._ensure_registry_files(set(scope.all_files))
         self.builder.graph = self._working_set.graph
 
         graph, provides, consumes = self.builder.update(scan, parses)
@@ -771,11 +803,7 @@ class CodeGenomeEngine:
             changed_files=changed_files,
         )
 
-        self.clusterer.annotate(graph)
-        emit("Analyzing dependencies...")
-        intelligence = GraphIntelligence(graph, registry=self.registry)
-        intelligence.annotate_coupling_metrics()
-        intel_report = intelligence.analyze()
+        intel_report = self._load_stored_report(snapshot_id) or IntelligenceReport()
 
         emit("Exporting graph...")
         export_paths = self._run_exports_bounded(snapshot_id, graph, intel_report)

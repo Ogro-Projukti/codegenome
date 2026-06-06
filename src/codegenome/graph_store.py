@@ -10,6 +10,7 @@ from typing import Any, Literal
 from codegenome.graph_api import Graph, create_graph
 from codegenome.clusterer import GraphClusterer
 from codegenome.intelligence import GraphIntelligence
+from codegenome.snapshot_metrics import SnapshotMetrics
 from codegenome.timeline import GraphTimeline, NodeHistoryEntry, SnapshotInfo
 
 
@@ -428,6 +429,8 @@ class GraphStore:
         Returns:
             list[str]: A list of node IDs corresponding to unreferenced symbols.
         """
+        if self._memory_bounded and not self._full_analysis_on_demand:
+            return list(self._require_bounded_metrics().report.dead_code)
         return self._require_intelligence().detect_dead_code(
             include_generated=include_generated,
             include_public_api=include_public_api,
@@ -439,6 +442,8 @@ class GraphStore:
         Returns:
             list[str]: A list of node IDs that act as entry points.
         """
+        if self._memory_bounded and not self._full_analysis_on_demand:
+            return list(self._require_bounded_metrics().report.entry_points)
         return self._require_intelligence().detect_entry_points()
 
     def get_god_nodes(self, *, include_generated: bool = False) -> list[dict[str, Any]]:
@@ -447,6 +452,11 @@ class GraphStore:
         Returns:
             list[dict[str, Any]]: A list of dictionaries containing 'node_id' and a severity 'score'.
         """
+        if self._memory_bounded and not self._full_analysis_on_demand:
+            return [
+                {"node_id": node_id, "score": score}
+                for node_id, score in self._require_bounded_metrics().report.god_nodes
+            ]
         return [
             {"node_id": node_id, "score": score}
             for node_id, score in self._require_intelligence().detect_god_nodes(
@@ -460,6 +470,11 @@ class GraphStore:
         Returns:
             list[list[str]]: A list of cycles, where each cycle is a list of node IDs.
         """
+        if self._memory_bounded and not self._full_analysis_on_demand:
+            return [
+                list(cycle)
+                for cycle in self._require_bounded_metrics().report.circular_dependencies
+            ]
         return self._require_intelligence().detect_circular_dependencies()
 
     def get_coupling_metrics(
@@ -481,6 +496,36 @@ class GraphStore:
         """
         if limit <= 0:
             raise ValueError("limit must be a positive integer")
+
+        if self._memory_bounded and not self._full_analysis_on_demand:
+            stored = self._require_bounded_metrics().report
+            cbo_rankings = stored.cbo_rankings[:limit]
+            lcom_rankings = stored.lcom_rankings[:limit]
+            lcom_by_node = dict(stored.lcom_rankings)
+            threshold = min_cbo or 5
+            tightly_coupled = [
+                item for item in stored.tightly_coupled_classes if item[1] >= threshold
+            ][:limit]
+            return {
+                "classes": [
+                    {
+                        "node_id": node_id,
+                        "cbo": cbo,
+                        "lcom": lcom_by_node.get(node_id, 0),
+                    }
+                    for node_id, cbo in cbo_rankings
+                ],
+                "cbo_rankings": [
+                    {"node_id": node_id, "cbo": score} for node_id, score in cbo_rankings
+                ],
+                "lcom_rankings": [
+                    {"node_id": node_id, "lcom": score} for node_id, score in lcom_rankings
+                ],
+                "tightly_coupled_classes": [
+                    {"node_id": node_id, "cbo": score} for node_id, score in tightly_coupled
+                ],
+                "limit": limit,
+            }
 
         intelligence = self._require_intelligence()
         metrics = intelligence.coupling_metrics(include_generated=include_generated)
@@ -524,10 +569,14 @@ class GraphStore:
             raise ValueError("limit must be a positive integer")
 
         if self._memory_bounded and not self._full_analysis_on_demand:
-            raise GraphStoreError(
-                "Betweenness centrality is disabled in memory-bounded MCP mode. "
-                "Restart with --full-analysis-on-demand to enable global analysis tools."
-            )
+            rankings = self._require_bounded_metrics().betweenness_rankings[:limit]
+            return {
+                "rankings": [
+                    {"node_id": node_id, "betweenness_centrality": score}
+                    for node_id, score in rankings
+                ],
+                "limit": limit,
+            }
         graph = self._load_full_graph() if self._memory_bounded else self._graph
 
         rankings = GraphClusterer().betweenness_rankings(
@@ -561,9 +610,12 @@ class GraphStore:
         """
         if limit <= 0:
             raise ValueError("limit must be a positive integer")
-        rankings = self._require_intelligence().complexity_rankings(
-            include_generated=include_generated
-        )[:limit]
+        if self._memory_bounded and not self._full_analysis_on_demand:
+            rankings = self._require_bounded_metrics().report.complexity_rankings[:limit]
+        else:
+            rankings = self._require_intelligence().complexity_rankings(
+                include_generated=include_generated
+            )[:limit]
         return [{"node_id": node_id, "complexity": score} for node_id, score in rankings]
 
     def get_churn(
@@ -602,7 +654,10 @@ class GraphStore:
             )
             return {"file_path": file_path, "churn_rate": rate}
 
-        rankings = self._require_intelligence().churn_rankings()[:limit]
+        if self._memory_bounded and not self._full_analysis_on_demand:
+            rankings = self._require_bounded_metrics().report.churn_rankings[:limit]
+        else:
+            rankings = self._require_intelligence().churn_rankings()[:limit]
         return {
             "rankings": [{"node_id": node_id, "churn": score} for node_id, score in rankings],
             "limit": limit,
@@ -653,6 +708,21 @@ class GraphStore:
             if len(results) >= limit:
                 break
         return results
+
+    def _load_stored_metrics(self) -> SnapshotMetrics | None:
+        if self._timeline is None or self._snapshot_id is None:
+            return None
+        return self._timeline.metrics_store.load_snapshot(self._snapshot_id)
+
+    def _require_bounded_metrics(self) -> SnapshotMetrics:
+        metrics = self._load_stored_metrics()
+        if metrics is None:
+            raise GraphStoreError(
+                "No precomputed global metrics for this snapshot. "
+                "Run a full `codegenome analyze` build first, or restart MCP with "
+                "--full-analysis-on-demand."
+            )
+        return metrics
 
     def _require_intelligence(self) -> GraphIntelligence:
         if self._memory_bounded and not self._full_analysis_on_demand:
