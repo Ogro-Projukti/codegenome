@@ -159,6 +159,125 @@ class GDRStore:
             )
         self._conn.commit()
 
+    def persist_snapshot_patch(
+        self,
+        base_snapshot_id: int,
+        snapshot_id: int,
+        changed_files: set[str],
+        registry: GlobalDependencyRegistry,
+        *,
+        updated_at: float | None = None,
+    ) -> None:
+        """Write GDR for a new snapshot by copying unchanged rows from a base snapshot."""
+        changed = {path for path in changed_files if path}
+        timestamp = updated_at if updated_at is not None else time.time()
+
+        if changed:
+            placeholders = ", ".join("?" for _ in changed)
+            params = (snapshot_id, base_snapshot_id, *sorted(changed))
+            self._conn.execute(
+                f"""
+                INSERT INTO gdr_files (
+                    snapshot_id, file_path, provides_json, consumes_json, updated_at
+                )
+                SELECT ?, file_path, provides_json, consumes_json, updated_at
+                FROM gdr_files
+                WHERE snapshot_id = ? AND file_path NOT IN ({placeholders})
+                """,
+                params,
+            )
+            self._conn.execute(
+                f"""
+                INSERT INTO gdr_provides (snapshot_id, fqn, file_path)
+                SELECT ?, fqn, file_path
+                FROM gdr_provides
+                WHERE snapshot_id = ? AND file_path NOT IN ({placeholders})
+                """,
+                params,
+            )
+            self._conn.execute(
+                f"""
+                INSERT INTO gdr_consumes (snapshot_id, fqn, file_path)
+                SELECT ?, fqn, file_path
+                FROM gdr_consumes
+                WHERE snapshot_id = ? AND file_path NOT IN ({placeholders})
+                """,
+                params,
+            )
+        else:
+            self._conn.execute(
+                """
+                INSERT INTO gdr_files (
+                    snapshot_id, file_path, provides_json, consumes_json, updated_at
+                )
+                SELECT ?, file_path, provides_json, consumes_json, updated_at
+                FROM gdr_files
+                WHERE snapshot_id = ?
+                """,
+                (snapshot_id, base_snapshot_id),
+            )
+            self._conn.execute(
+                """
+                INSERT INTO gdr_provides (snapshot_id, fqn, file_path)
+                SELECT ?, fqn, file_path
+                FROM gdr_provides
+                WHERE snapshot_id = ?
+                """,
+                (snapshot_id, base_snapshot_id),
+            )
+            self._conn.execute(
+                """
+                INSERT INTO gdr_consumes (snapshot_id, fqn, file_path)
+                SELECT ?, fqn, file_path
+                FROM gdr_consumes
+                WHERE snapshot_id = ?
+                """,
+                (snapshot_id, base_snapshot_id),
+            )
+
+        file_rows: list[tuple[int, str, str, str, float]] = []
+        provide_rows: list[tuple[int, str, str]] = []
+        consume_rows: list[tuple[int, str, str]] = []
+        for file_path in sorted(changed):
+            entry = registry.files.get(file_path)
+            if entry is None:
+                continue
+            provides = sorted(entry.provides)
+            consumes = sorted(entry.consumes)
+            file_rows.append(
+                (
+                    snapshot_id,
+                    file_path,
+                    json.dumps(provides, sort_keys=True),
+                    json.dumps(consumes, sort_keys=True),
+                    timestamp,
+                )
+            )
+            for fqn in provides:
+                provide_rows.append((snapshot_id, fqn, file_path))
+            for fqn in consumes:
+                consume_rows.append((snapshot_id, fqn, file_path))
+
+        if file_rows:
+            self._conn.executemany(
+                """
+                INSERT INTO gdr_files (snapshot_id, file_path, provides_json, consumes_json, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                file_rows,
+            )
+        if provide_rows:
+            self._conn.executemany(
+                "INSERT INTO gdr_provides (snapshot_id, fqn, file_path) VALUES (?, ?, ?)",
+                provide_rows,
+            )
+        if consume_rows:
+            self._conn.executemany(
+                "INSERT INTO gdr_consumes (snapshot_id, fqn, file_path) VALUES (?, ?, ?)",
+                consume_rows,
+            )
+        self._conn.commit()
+
     def load_file(self, snapshot_id: int, file_path: str) -> GDRFileEntry | None:
         """Load provides/consumes for one file."""
         row = self._conn.execute(

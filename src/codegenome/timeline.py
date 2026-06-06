@@ -15,9 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from codegenome.builder import file_node_id
+from codegenome.exporter import GraphExporter, GraphStatistics
 from codegenome.gdr_store import GDRStore
 from codegenome.graph_api import Graph, create_graph
 from codegenome.graph_loader import node_file_path
+from codegenome.intelligence import IntelligenceReport
+from codegenome.resources import copy_html_asset, render_template
 
 
 @dataclass(frozen=True)
@@ -307,25 +310,33 @@ class GraphTimeline:
         if seed_node_id not in visited:
             visited.add(seed_node_id)
 
-        placeholders = ", ".join("?" for _ in visited)
+        node_ids_to_load = set(visited)
+        seen_edges: set[tuple[str, str]] = set()
+        for source, target, attrs_json in edges:
+            if source not in visited and target not in visited:
+                continue
+            node_ids_to_load.add(source)
+            node_ids_to_load.add(target)
+            key = (source, target)
+            if key not in seen_edges:
+                seen_edges.add(key)
+
+        placeholders = ", ".join("?" for _ in node_ids_to_load)
         node_rows = self._conn.execute(
             f"""
             SELECT node_id, attrs_json
             FROM graph_nodes
             WHERE snapshot_id = ? AND node_id IN ({placeholders})
             """,
-            (snapshot_id, *sorted(visited)),
+            (snapshot_id, *sorted(node_ids_to_load)),
         ).fetchall()
         for row in node_rows:
             graph.add_node(row["node_id"], **json.loads(row["attrs_json"]))
 
-        seen_edges: set[tuple[str, str]] = set()
         for source, target, attrs_json in edges:
-            if source in visited and target in visited:
-                key = (source, target)
-                if key not in seen_edges:
+            if (source, target) in seen_edges:
+                if graph.has_node(source) and graph.has_node(target):
                     graph.add_edge(source, target, **json.loads(attrs_json))
-                    seen_edges.add(key)
         return graph
 
     def record_snapshot_patch(
@@ -410,6 +421,296 @@ class GraphTimeline:
         )
         self._conn.commit()
         return snapshot_id
+
+    def file_paths_with_prefix(
+        self,
+        snapshot_id: int,
+        prefix: str,
+        *,
+        limit: int = 64,
+    ) -> set[str]:
+        """Return file paths in a snapshot that start with a prefix."""
+        normalized = prefix.replace("\\", "/").strip("/")
+        if not normalized:
+            return set()
+
+        if self.has_node_file_index(snapshot_id):
+            rows = self._conn.execute(
+                """
+                SELECT DISTINCT file_path
+                FROM graph_node_files
+                WHERE snapshot_id = ? AND file_path LIKE ?
+                ORDER BY file_path
+                LIMIT ?
+                """,
+                (snapshot_id, f"{normalized}%", max(1, limit)),
+            ).fetchall()
+            return {row["file_path"] for row in rows}
+
+        matches: set[str] = set()
+        rows = self._conn.execute(
+            "SELECT node_id, attrs_json FROM graph_nodes WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchall()
+        for row in rows:
+            file_path = node_file_path(row["node_id"], json.loads(row["attrs_json"]))
+            if file_path and file_path.startswith(normalized):
+                matches.add(file_path)
+                if len(matches) >= limit:
+                    break
+        return matches
+
+    def search_nodes(
+        self,
+        snapshot_id: int,
+        query: str,
+        *,
+        node_type: str | None = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        """Search node attributes in a snapshot without loading the full graph."""
+        needle = query.casefold().strip()
+        if not needle or limit <= 0:
+            return []
+
+        results: list[dict[str, Any]] = []
+        rows = self._conn.execute(
+            "SELECT node_id, attrs_json FROM graph_nodes WHERE snapshot_id = ? ORDER BY node_id",
+            (snapshot_id,),
+        ).fetchall()
+        for row in rows:
+            attrs = json.loads(row["attrs_json"])
+            if node_type and attrs.get("node_type") != node_type:
+                continue
+            haystacks = [
+                row["node_id"],
+                str(attrs.get("name", "")),
+                str(attrs.get("qualified_name", "")),
+                str(attrs.get("file_path", "")),
+            ]
+            if not any(needle in value.casefold() for value in haystacks if value):
+                continue
+            results.append({"node_id": row["node_id"], **attrs})
+            if len(results) >= limit:
+                break
+        return results
+
+    def get_node_attrs(self, snapshot_id: int, node_id: str) -> dict[str, Any] | None:
+        """Return attributes for one node without loading the full snapshot."""
+        row = self._conn.execute(
+            """
+            SELECT attrs_json
+            FROM graph_nodes
+            WHERE snapshot_id = ? AND node_id = ?
+            """,
+            (snapshot_id, node_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return json.loads(row["attrs_json"])
+
+    def list_snapshot_nodes(
+        self,
+        snapshot_id: int,
+        *,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return node payloads for a snapshot without building an in-memory graph."""
+        query = (
+            "SELECT node_id, attrs_json FROM graph_nodes WHERE snapshot_id = ? ORDER BY node_id"
+        )
+        params: list[Any] = [snapshot_id]
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+        rows = self._conn.execute(query, params).fetchall()
+        return [
+            {"node_id": row["node_id"], **json.loads(row["attrs_json"])}
+            for row in rows
+        ]
+
+    def list_snapshot_edges(
+        self,
+        snapshot_id: int,
+        *,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return edge payloads for a snapshot without building an in-memory graph."""
+        query = """
+            SELECT source_id, target_id, attrs_json
+            FROM graph_edges
+            WHERE snapshot_id = ?
+            ORDER BY source_id, target_id
+        """
+        params: list[Any] = [snapshot_id]
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+        rows = self._conn.execute(query, params).fetchall()
+        return [
+            {
+                "source": row["source_id"],
+                "target": row["target_id"],
+                **json.loads(row["attrs_json"]),
+            }
+            for row in rows
+        ]
+
+    def export_snapshot_json(self, snapshot_id: int, output_path: Path) -> Path:
+        """Write graph.json for a snapshot by reading SQLite rows directly."""
+        node_rows = self._conn.execute(
+            "SELECT node_id, attrs_json FROM graph_nodes WHERE snapshot_id = ? ORDER BY node_id",
+            (snapshot_id,),
+        ).fetchall()
+        edge_rows = self._conn.execute(
+            """
+            SELECT source_id, target_id, attrs_json
+            FROM graph_edges
+            WHERE snapshot_id = ?
+            ORDER BY source_id, target_id
+            """,
+            (snapshot_id,),
+        ).fetchall()
+
+        nodes = [
+            {"id": row["node_id"], **json.loads(row["attrs_json"])}
+            for row in node_rows
+        ]
+        edges = [
+            {
+                "source": row["source_id"],
+                "target": row["target_id"],
+                **json.loads(row["attrs_json"]),
+            }
+            for row in edge_rows
+        ]
+        info = self._conn.execute(
+            """
+            SELECT snapshot_id, created_at, label, node_count, edge_count
+            FROM snapshots
+            WHERE snapshot_id = ?
+            """,
+            (snapshot_id,),
+        ).fetchone()
+        stats = self.compute_snapshot_statistics(snapshot_id)
+        payload = {
+            "snapshot_id": snapshot_id,
+            "label": info["label"] if info else None,
+            "node_count": info["node_count"] if info else len(nodes),
+            "edge_count": info["edge_count"] if info else len(edges),
+            "metadata": {
+                "statistics": stats.__dict__,
+            },
+            "nodes": nodes,
+            "edges": edges,
+        }
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        return output_path
+
+    def compute_snapshot_statistics(self, snapshot_id: int) -> GraphStatistics:
+        """Aggregate node-type counts for a snapshot without loading a graph."""
+        languages: dict[str, int] = {}
+        file_count = symbol_count = import_count = external_count = 0
+        communities: set[int] = set()
+        bridge_count = 0
+
+        rows = self._conn.execute(
+            "SELECT attrs_json FROM graph_nodes WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchall()
+        for row in rows:
+            attrs = json.loads(row["attrs_json"])
+            node_type = attrs.get("node_type")
+            if node_type == "file":
+                file_count += 1
+                language = attrs.get("language")
+                if language:
+                    languages[str(language)] = languages.get(str(language), 0) + 1
+            elif node_type == "symbol":
+                symbol_count += 1
+            elif node_type == "import":
+                import_count += 1
+            elif node_type == "external":
+                external_count += 1
+
+            community_id = attrs.get("community_id")
+            if community_id is not None:
+                communities.add(int(community_id))
+            if attrs.get("is_bridge"):
+                bridge_count += 1
+
+        info = self._conn.execute(
+            "SELECT node_count, edge_count FROM snapshots WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchone()
+        node_count = info["node_count"] if info else len(rows)
+        edge_count = info["edge_count"] if info else 0
+
+        return GraphStatistics(
+            node_count=node_count,
+            edge_count=edge_count,
+            file_count=file_count,
+            symbol_count=symbol_count,
+            import_count=import_count,
+            external_count=external_count,
+            community_count=len(communities),
+            bridge_count=bridge_count,
+            languages=dict(sorted(languages.items())),
+        )
+
+    def export_snapshot_html(
+        self,
+        snapshot_id: int,
+        output_path: Path,
+        *,
+        workspace_name: str,
+        report: IntelligenceReport | None = None,
+        graph_json_relative: str = "graph.json",
+    ) -> Path:
+        """Write graph.html that loads node data from a sidecar JSON file."""
+        import html as html_module
+
+        stats = self.compute_snapshot_statistics(snapshot_id)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        bundled_js = copy_html_asset(
+            "vis-network.min.js",
+            output_path.parent / "vis-network.min.js",
+        )
+        copy_html_asset("graph-viewer.css", output_path.parent / "graph-viewer.css")
+        copy_html_asset("graph-viewer.js", output_path.parent / "graph-viewer.js")
+        script_src = (
+            "vis-network.min.js"
+            if bundled_js is not None
+            else "https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"
+        )
+        graph_payload = {
+            "metadata": {
+                "workspace": workspace_name,
+                "statistics": stats.__dict__,
+            },
+            "nodes": [],
+            "edges": [],
+            "intelligence": GraphExporter.report_to_dict(report),
+        }
+        config = {
+            "workspaceName": workspace_name,
+            "liveJsonUrl": graph_json_relative,
+            "livePollMs": 1500,
+            "maxFileNodes": 200,
+        }
+        output_path.write_text(
+            render_template(
+                "graph.html.j2",
+                workspace_name=html_module.escape(workspace_name),
+                script_src=script_src,
+                graph_json=json.dumps(graph_payload),
+                stats=stats,
+                config_json=json.dumps(config),
+            ),
+            encoding="utf-8",
+        )
+        return output_path
 
     def list_snapshots(self) -> list[SnapshotInfo]:
         """List all recorded snapshots in ascending order.

@@ -224,11 +224,33 @@ Implemented:
 - [x] File-scoped graph load and snapshot patching (Phase 2)
 - [x] `WorkingSetGraph` + `evolve --memory-bounded` (Phase 3)
 
-Not yet implemented:
+### Bounded MCP (Phase 4)
 
-- [ ] Bounded MCP `GraphStore` mode (queries still load full graph by default)
-- [ ] Global analyses without temporary full-graph reload after surgical updates
-- [ ] GDR deltas per snapshot (full copy per snapshot today)
-- [ ] Memory-bounded incremental `watch` rebuild path (debounced full rebuild still loads everything)
+```bash
+codegenome mcp-start --memory-bounded
+codegenome mcp-start --memory-bounded --full-analysis-on-demand
+```
+
+| Tool | Bounded behavior |
+|------|------------------|
+| `get_node`, `get_neighbors` | `load_neighborhood()` on demand |
+| `query_graph` with `file_path` | `load_file_subgraph()` for matching files |
+| `search_nodes` | SQLite scan (no full graph in RAM) |
+| `get_dead_code`, `get_god_nodes`, etc. | Disabled unless `--full-analysis-on-demand` |
+
+Environment variables: `CODEGENOME_MCP_MEMORY_BOUNDED`, `CODEGENOME_MCP_MAX_QUERY_NODES`, `CODEGENOME_MCP_NEIGHBORHOOD_DEPTH`, `CODEGENOME_MCP_FULL_ANALYSIS_ON_DEMAND`.
+
+### Scoped surgical analysis (Phase 5)
+
+Bounded `evolve --memory-bounded` surgical updates now:
+
+- Analyze the **working set graph** only (no `load_snapshot()` for intelligence)
+- Write `graph.json` via `timeline.export_snapshot_json()` (SQLite → disk)
+
+### Phase 6 — deferred HTML, GDR deltas, bounded watch rebuild
+
+- **HTML without full-graph reload:** `timeline.export_snapshot_html()` writes a shell page with `liveJsonUrl: "graph.json"`; the viewer fetches node data from the sidecar JSON file (no `load_snapshot()` for HTML).
+- **GDR snapshot deltas:** `GDRStore.persist_snapshot_patch()` copies unchanged file rows from the base snapshot and writes only changed files from the in-memory registry.
+- **Bounded debounced rebuild:** `rebuild_incremental()` routes to `_rebuild_incremental_bounded()` when `memory_bounded` is active — scan delta → GDR scope → working set → `record_snapshot_patch` → bounded exports.
 
 See [`memory-bounded-storage.md`](memory-bounded-storage.md) for the full design spec.

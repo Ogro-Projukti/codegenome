@@ -382,39 +382,44 @@ class GraphExporter:
             "intelligence": self._report_dict(),
         }
 
-    def _report_dict(self) -> dict[str, Any] | None:
-        if self.report is None:
+    @staticmethod
+    def report_to_dict(report: IntelligenceReport | None) -> dict[str, Any] | None:
+        """Serialize an intelligence report for JSON/HTML exports."""
+        if report is None:
             return None
         return {
-            "dead_code": self.report.dead_code,
-            "circular_dependencies": self.report.circular_dependencies,
+            "dead_code": report.dead_code,
+            "circular_dependencies": report.circular_dependencies,
             "god_nodes": [
                 {"node": node, "score": score}
-                for node, score in self.report.god_nodes
+                for node, score in report.god_nodes
             ],
-            "entry_points": self.report.entry_points,
-            "orphan_modules": self.report.orphan_modules,
+            "entry_points": report.entry_points,
+            "orphan_modules": report.orphan_modules,
             "complexity_rankings": [
                 {"node": node, "complexity": value}
-                for node, value in self.report.complexity_rankings[:25]
+                for node, value in report.complexity_rankings[:25]
             ],
             "churn_rankings": [
                 {"node": node, "churn": value}
-                for node, value in self.report.churn_rankings[:25]
+                for node, value in report.churn_rankings[:25]
             ],
             "cbo_rankings": [
                 {"node": node, "cbo": value}
-                for node, value in self.report.cbo_rankings[:25]
+                for node, value in report.cbo_rankings[:25]
             ],
             "lcom_rankings": [
                 {"node": node, "lcom": value}
-                for node, value in self.report.lcom_rankings[:25]
+                for node, value in report.lcom_rankings[:25]
             ],
             "tightly_coupled_classes": [
                 {"node": node, "cbo": value}
-                for node, value in self.report.tightly_coupled_classes[:25]
+                for node, value in report.tightly_coupled_classes[:25]
             ],
         }
+
+    def _report_dict(self) -> dict[str, Any] | None:
+        return self.report_to_dict(self.report)
 
     def _render_markdown(self) -> str:
         stats = self.compute_statistics()

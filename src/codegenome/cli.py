@@ -109,7 +109,17 @@ def export(export_format: str, path: str):
     is_flag=True,
     help="Allow HTTP transport to bind on LAN (0.0.0.0) instead of localhost.",
 )
-def mcp_start(path: str, transport: str, port: int, lan: bool):
+@click.option(
+    "--memory-bounded",
+    is_flag=True,
+    help="Load MCP query subgraphs on demand instead of the full graph.",
+)
+@click.option(
+    "--full-analysis-on-demand",
+    is_flag=True,
+    help="Allow global MCP analysis tools to temporarily load the full graph.",
+)
+def mcp_start(path: str, transport: str, port: int, lan: bool, memory_bounded: bool, full_analysis_on_demand: bool):
     """Initializes and starts the MCP server so external LLMs can connect.
 
     Args:
@@ -128,6 +138,10 @@ def mcp_start(path: str, transport: str, port: int, lan: bool):
     
     from codegenome.mcp_server import main as mcp_main
     args = ["--db-path", str(db_path), "--transport", transport.lower()]
+    if memory_bounded:
+        args.append("--memory-bounded")
+    if full_analysis_on_demand:
+        args.append("--full-analysis-on-demand")
     if transport.lower() == "http":
         host = "0.0.0.0" if lan else "127.0.0.1"
         args.extend(["--host", host])

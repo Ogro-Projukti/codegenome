@@ -44,17 +44,35 @@ class GraphStore:
     perform queries, and extract code intelligence metrics.
     """
 
-    def __init__(self, db_path: Path | str) -> None:
+    def __init__(
+        self,
+        db_path: Path | str,
+        *,
+        memory_bounded: bool = False,
+        max_query_nodes: int = 500,
+        neighborhood_depth: int = 1,
+        full_analysis_on_demand: bool = False,
+    ) -> None:
         """Initializes a new GraphStore instance.
 
         Args:
             db_path (Path | str): The path to the SQLite timeline database.
+            memory_bounded (bool): Load query subgraphs on demand instead of the full graph.
+            max_query_nodes (int): Maximum nodes for neighborhood loads in bounded mode.
+            neighborhood_depth (int): BFS depth for bounded neighbor queries.
+            full_analysis_on_demand (bool): Allow global analysis tools to load the full graph temporarily.
         """
         self.db_path = Path(db_path).resolve()
+        self._memory_bounded = memory_bounded
+        self._max_query_nodes = max(1, max_query_nodes)
+        self._neighborhood_depth = max(0, neighborhood_depth)
+        self._full_analysis_on_demand = full_analysis_on_demand
         self._timeline: GraphTimeline | None = None
         self._graph: Graph = create_graph("igraph")
         self._snapshot_id: int | None = None
         self._snapshot_label: str | None = None
+        self._snapshot_node_count = 0
+        self._snapshot_edge_count = 0
         self._intelligence: GraphIntelligence | None = None
 
     @property
@@ -86,13 +104,14 @@ class GraphStore:
 
         snapshots = self._timeline.list_snapshots()
         if not snapshots:
-            self._graph = create_graph("igraph")
-            self._snapshot_id = None
-            self._snapshot_label = None
-            self._intelligence = GraphIntelligence(self._graph)
+            self._bind_snapshot_metadata(None)
             return
 
         latest = snapshots[-1]
+        if self._memory_bounded:
+            self._bind_snapshot_metadata(latest)
+            return
+
         try:
             self._graph = self._timeline.load_snapshot(latest.snapshot_id)
         except sqlite3.Error as exc:
@@ -100,9 +119,7 @@ class GraphStore:
                 f"Failed to load snapshot {latest.snapshot_id}: {exc}"
             ) from exc
 
-        self._snapshot_id = latest.snapshot_id
-        self._snapshot_label = latest.label
-        self._intelligence = GraphIntelligence(self._graph)
+        self._bind_snapshot_metadata(latest, graph=self._graph)
 
     def refresh_latest(self) -> bool:
         """Load the newest timeline snapshot if it changed after startup.
@@ -116,15 +133,16 @@ class GraphStore:
         snapshots = self._timeline.list_snapshots()
         if not snapshots:
             changed = self._snapshot_id is not None or not self.is_empty
-            self._graph = create_graph("igraph")
-            self._snapshot_id = None
-            self._snapshot_label = None
-            self._intelligence = GraphIntelligence(self._graph)
+            self._bind_snapshot_metadata(None)
             return changed
 
         latest = snapshots[-1]
         if latest.snapshot_id == self._snapshot_id:
             return False
+
+        if self._memory_bounded:
+            self._bind_snapshot_metadata(latest)
+            return True
 
         try:
             self._graph = self._timeline.load_snapshot(latest.snapshot_id)
@@ -133,9 +151,7 @@ class GraphStore:
                 f"Failed to load snapshot {latest.snapshot_id}: {exc}"
             ) from exc
 
-        self._snapshot_id = latest.snapshot_id
-        self._snapshot_label = latest.label
-        self._intelligence = GraphIntelligence(self._graph)
+        self._bind_snapshot_metadata(latest, graph=self._graph)
         return True
 
     def close(self) -> None:
@@ -151,13 +167,21 @@ class GraphStore:
             GraphSummary: High-level metrics for the current graph state.
         """
         latest_snapshot_id = self._latest_snapshot_id()
+        if self._memory_bounded:
+            node_count = self._snapshot_node_count
+            edge_count = self._snapshot_edge_count
+            empty = node_count == 0
+        else:
+            node_count = self._graph.number_of_nodes()
+            edge_count = self._graph.number_of_edges()
+            empty = self.is_empty
         return GraphSummary(
             snapshot_id=self._snapshot_id,
             latest_snapshot_id=latest_snapshot_id,
-            node_count=self._graph.number_of_nodes(),
-            edge_count=self._graph.number_of_edges(),
+            node_count=node_count,
+            edge_count=edge_count,
             label=self._snapshot_label,
-            empty=self.is_empty,
+            empty=empty,
             current=self._snapshot_id == latest_snapshot_id,
         )
 
@@ -188,6 +212,7 @@ class GraphStore:
             "edge_count": summary.edge_count,
             "empty": summary.empty,
         }
+        payload["memory_bounded"] = self._memory_bounded
         if include_nodes:
             payload["nodes"] = self._serialize_nodes(limit=limit)
         if include_edges:
@@ -219,6 +244,14 @@ class GraphStore:
         if limit <= 0:
             raise ValueError("limit must be a positive integer")
 
+        if self._memory_bounded:
+            return self._query_graph_bounded(
+                node_type=node_type,
+                file_path=file_path,
+                kind=kind,
+                limit=limit,
+            )
+
         matches: list[dict[str, Any]] = []
         for node_id, attrs in self._graph.iter_nodes():
             if node_type and attrs.get("node_type") != node_type:
@@ -236,6 +269,7 @@ class GraphStore:
             "limit": limit,
             "nodes": matches,
             "empty": self.is_empty,
+            "memory_bounded": False,
         }
 
     def get_node(self, node_id: str) -> dict[str, Any] | None:
@@ -252,6 +286,12 @@ class GraphStore:
         """
         if not node_id:
             raise ValueError("node_id is required")
+        if self._memory_bounded:
+            attrs = self._require_timeline().get_node_attrs(self._snapshot_id, node_id)
+            if attrs is None:
+                return None
+            return {"node_id": node_id, **attrs}
+
         if not self._graph.has_node(node_id):
             return None
         return {"node_id": node_id, **self._graph.get_node(node_id)}
@@ -278,29 +318,35 @@ class GraphStore:
         """
         if not node_id:
             raise ValueError("node_id is required")
-        if not self._graph.has_node(node_id):
+        graph = self._graph
+        if self._memory_bounded:
+            graph = self._load_query_graph(
+                seed_node_id=node_id,
+                depth=self._neighborhood_depth,
+            )
+        if not graph.has_node(node_id):
             raise GraphStoreError(f"Node not found: {node_id}")
 
         incoming: list[dict[str, Any]] = []
         outgoing: list[dict[str, Any]] = []
 
         if direction in {"in", "both"}:
-            for source, _, attrs in self._graph.in_edges(node_id):
+            for source, _, attrs in graph.in_edges(node_id):
                 incoming.append(
                     {
                         "node_id": source,
                         "edge": attrs,
-                        "node": self._graph.get_node(source),
+                        "node": graph.get_node(source),
                     }
                 )
 
         if direction in {"out", "both"}:
-            for _, target, attrs in self._graph.out_edges(node_id):
+            for _, target, attrs in graph.out_edges(node_id):
                 outgoing.append(
                     {
                         "node_id": target,
                         "edge": attrs,
-                        "node": self._graph.get_node(target),
+                        "node": graph.get_node(target),
                     }
                 )
 
@@ -309,6 +355,7 @@ class GraphStore:
             "direction": direction,
             "incoming": incoming,
             "outgoing": outgoing,
+            "memory_bounded": self._memory_bounded,
         }
 
     def get_changes(
@@ -476,11 +523,15 @@ class GraphStore:
         if limit <= 0:
             raise ValueError("limit must be a positive integer")
 
-        if self._graph is None:
-            raise GraphStoreError("Graph is not loaded")
+        if self._memory_bounded and not self._full_analysis_on_demand:
+            raise GraphStoreError(
+                "Betweenness centrality is disabled in memory-bounded MCP mode. "
+                "Restart with --full-analysis-on-demand to enable global analysis tools."
+            )
+        graph = self._load_full_graph() if self._memory_bounded else self._graph
 
         rankings = GraphClusterer().betweenness_rankings(
-            self._graph,
+            graph,
             include_generated=include_generated,
         )[:limit]
         return {
@@ -582,6 +633,9 @@ class GraphStore:
         if limit <= 0:
             raise ValueError("limit must be a positive integer")
 
+        if self._memory_bounded:
+            return self._search_nodes_bounded(query, node_type=node_type, limit=limit)
+
         needle = query.casefold()
         results: list[dict[str, Any]] = []
         for node_id, attrs in self._graph.iter_nodes():
@@ -601,11 +655,133 @@ class GraphStore:
         return results
 
     def _require_intelligence(self) -> GraphIntelligence:
+        if self._memory_bounded and not self._full_analysis_on_demand:
+            raise GraphStoreError(
+                "Global graph analysis is disabled in memory-bounded MCP mode. "
+                "Use get_node, get_neighbors, query_graph, or search_nodes for local queries, "
+                "or restart the MCP server with --full-analysis-on-demand."
+            )
+        if self._memory_bounded and self._full_analysis_on_demand:
+            return GraphIntelligence(self._load_full_graph())
         if self._intelligence is None:
             raise GraphStoreError("Intelligence engine is not initialized")
         return self._intelligence
 
+    def _bind_snapshot_metadata(
+        self,
+        info: SnapshotInfo | None,
+        *,
+        graph: Graph | None = None,
+    ) -> None:
+        if info is None:
+            self._graph = create_graph("igraph")
+            self._snapshot_id = None
+            self._snapshot_label = None
+            self._snapshot_node_count = 0
+            self._snapshot_edge_count = 0
+            self._intelligence = GraphIntelligence(self._graph)
+            return
+
+        if graph is not None:
+            self._graph = graph
+        elif self._memory_bounded:
+            self._graph = create_graph("igraph")
+        self._snapshot_id = info.snapshot_id
+        self._snapshot_label = info.label
+        self._snapshot_node_count = info.node_count
+        self._snapshot_edge_count = info.edge_count
+        self._intelligence = (
+            None if self._memory_bounded else GraphIntelligence(self._graph)
+        )
+
+    def _require_timeline(self) -> GraphTimeline:
+        if self._timeline is None:
+            raise GraphStoreError("Timeline database is not open")
+        if self._snapshot_id is None:
+            raise GraphStoreError("No snapshot is loaded")
+        return self._timeline
+
+    def _load_full_graph(self) -> Graph:
+        timeline = self._require_timeline()
+        return timeline.load_snapshot(self._snapshot_id)
+
+    def _load_query_graph(
+        self,
+        *,
+        seed_node_id: str | None = None,
+        file_paths: set[str] | None = None,
+        depth: int | None = None,
+    ) -> Graph:
+        timeline = self._require_timeline()
+        if file_paths:
+            return timeline.load_file_subgraph(self._snapshot_id, file_paths)
+        if seed_node_id:
+            return timeline.load_neighborhood(
+                self._snapshot_id,
+                seed_node_id,
+                depth=self._neighborhood_depth if depth is None else depth,
+                max_nodes=self._max_query_nodes,
+            )
+        return self._graph
+
+    def _query_graph_bounded(
+        self,
+        *,
+        node_type: str | None,
+        file_path: str | None,
+        kind: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        timeline = self._require_timeline()
+        if file_path:
+            file_paths = timeline.file_paths_with_prefix(
+                self._snapshot_id,
+                file_path,
+                limit=self._max_query_nodes,
+            )
+            graph = timeline.load_file_subgraph(self._snapshot_id, file_paths)
+        else:
+            graph = self._graph
+
+        matches: list[dict[str, Any]] = []
+        for node_id, attrs in graph.iter_nodes():
+            if node_type and attrs.get("node_type") != node_type:
+                continue
+            if file_path and not str(attrs.get("file_path", "")).startswith(file_path):
+                continue
+            if kind and attrs.get("kind") != kind:
+                continue
+            matches.append({"node_id": node_id, **attrs})
+            if len(matches) >= limit:
+                break
+
+        return {
+            "count": len(matches),
+            "limit": limit,
+            "nodes": matches,
+            "empty": self._snapshot_node_count == 0,
+            "memory_bounded": True,
+        }
+
+    def _search_nodes_bounded(
+        self,
+        query: str,
+        *,
+        node_type: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        timeline = self._require_timeline()
+        return timeline.search_nodes(
+            self._snapshot_id,
+            query,
+            node_type=node_type,
+            limit=limit,
+        )
+
     def _serialize_nodes(self, *, limit: int) -> list[dict[str, Any]]:
+        if self._memory_bounded:
+            return self._bounded_limited_nodes(limit)
+
         nodes: list[dict[str, Any]] = []
         for node_id, attrs in self._graph.iter_nodes():
             nodes.append({"node_id": node_id, **attrs})
@@ -613,7 +789,19 @@ class GraphStore:
                 break
         return nodes
 
+    def _bounded_limited_nodes(self, limit: int) -> list[dict[str, Any]]:
+        return self._require_timeline().list_snapshot_nodes(
+            self._snapshot_id,
+            limit=limit,
+        )
+
     def _serialize_edges(self, *, limit: int) -> list[dict[str, Any]]:
+        if self._memory_bounded:
+            return self._require_timeline().list_snapshot_edges(
+                self._snapshot_id,
+                limit=limit,
+            )
+
         edges: list[dict[str, Any]] = []
         for source, target, attrs in self._graph.iter_edges():
             edges.append({"source": source, "target": target, **attrs})

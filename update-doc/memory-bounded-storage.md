@@ -543,11 +543,20 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 - [x] `CodeGenomeConfig.memory_bounded` and `evolve --memory-bounded`
 - [x] Surgical updates use GDR scope + working set when memory-bounded
 
-### Phase 4–5 — remaining
+### Phase 4 — bounded MCP (shipped)
 
-- [ ] Bounded MCP `GraphStore` mode (`load_neighborhood` on tool queries)
-- [ ] Scoped or deferred global analyses without temporary full-graph reload
-- [ ] GDR deltas per snapshot (full copy per snapshot today)
+- [x] `GraphStore(memory_bounded=True)` keeps snapshot metadata only at startup
+- [x] `get_node`, `get_neighbors`, `query_graph`, `search_nodes` use SQL/subgraph loads
+- [x] `codegenome mcp-start --memory-bounded` and env vars (`CODEGENOME_MCP_MEMORY_BOUNDED`, etc.)
+- [x] Optional `--full-analysis-on-demand` for global MCP tools
+
+### Phase 5 — scoped surgical analysis (partial)
+
+- [x] Bounded surgical updates analyze the working set only (no full-graph reload)
+- [x] `timeline.export_snapshot_json()` writes `graph.json` from SQLite rows
+- [x] `timeline.export_snapshot_html()` defers node data to sidecar `graph.json` (no `load_snapshot()`)
+- [x] `GDRStore.persist_snapshot_patch()` for snapshot-scoped GDR deltas
+- [x] `_rebuild_incremental_bounded()` for memory-bounded debounced watch rebuilds
 
 See [`gdr-persistence-and-live-watch-ignore.md`](gdr-persistence-and-live-watch-ignore.md) for release notes.
 

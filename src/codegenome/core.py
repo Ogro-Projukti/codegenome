@@ -238,6 +238,15 @@ class CodeGenomeEngine:
             if on_progress is not None:
                 on_progress(message)
 
+        if (
+            not full
+            and self.config.memory_bounded
+            and self._working_set is not None
+            and self._active_snapshot_id is not None
+            and self._loaded_existing_graph
+        ):
+            return self._rebuild_incremental_bounded(on_progress=on_progress)
+
         incremental = not full and self._loaded_existing_graph
         emit("Scanning workspace...")
         scan = self.scanner.scan(
@@ -418,26 +427,38 @@ class CodeGenomeEngine:
             )
             self._working_set.set_snapshot_id(snapshot_id)
             self._active_snapshot_id = snapshot_id
-            analysis_graph = self.timeline.load_snapshot(snapshot_id)
+            analysis_graph = graph
         else:
             snapshot_id = self.timeline.record_snapshot(graph, label=f"surgical_{event_type}")
             analysis_graph = graph
 
-        self._persist_gdr(snapshot_id)
+        self._persist_gdr(
+            snapshot_id,
+            base_snapshot_id=base_snapshot_id if use_bounded_patch else None,
+            changed_files=changed_files if use_bounded_patch else None,
+        )
 
         self.clusterer.annotate(analysis_graph)
         intelligence = GraphIntelligence(analysis_graph, registry=self.registry)
         intelligence.annotate_coupling_metrics()
         report = intelligence.analyze()
+
+        if use_bounded_patch:
+            export_paths = self._run_exports_bounded(snapshot_id, analysis_graph, report)
+            self.builder.graph = self._working_set.graph
+            return BuildResult(
+                graph=self._working_set.graph,
+                report=report,
+                snapshot_id=snapshot_id,
+                export_paths=export_paths,
+            )
+
         exporter = GraphExporter(
             analysis_graph,
             report=report,
             workspace_name=self.workspace.name,
         )
         export_paths = self._run_exports(exporter)
-
-        if use_bounded_patch:
-            self.builder.graph = self._working_set.graph
 
         return BuildResult(
             graph=analysis_graph,
@@ -626,10 +647,146 @@ class CodeGenomeEngine:
         if self.timeline.gdr_store.has_snapshot(snapshot_id):
             self.registry = self.timeline.gdr_store.hydrate_registry(snapshot_id)
 
-    def _persist_gdr(self, snapshot_id: int | None) -> None:
+    def _persist_gdr(
+        self,
+        snapshot_id: int | None,
+        *,
+        base_snapshot_id: int | None = None,
+        changed_files: set[str] | None = None,
+    ) -> None:
         if snapshot_id is None:
             return
+        if (
+            base_snapshot_id is not None
+            and changed_files is not None
+            and self.timeline.gdr_store.has_snapshot(base_snapshot_id)
+        ):
+            self.timeline.gdr_store.persist_snapshot_patch(
+                base_snapshot_id,
+                snapshot_id,
+                changed_files,
+                self.registry,
+            )
+            return
         self.timeline.gdr_store.persist_snapshot(snapshot_id, self.registry)
+
+    def _run_exports_bounded(
+        self,
+        snapshot_id: int,
+        analysis_graph: object,
+        report: IntelligenceReport,
+    ) -> dict[str, Path]:
+        """Export artifacts after a bounded surgical update without reloading the full graph."""
+        selected = tuple(self.config.export_formats)
+        paths: dict[str, Path] = {}
+        if "json" in selected or not selected:
+            paths["graph_json"] = self.timeline.export_snapshot_json(
+                snapshot_id,
+                self.graph_json_path,
+            )
+        if "html" in selected:
+            paths["html"] = self.timeline.export_snapshot_html(
+                snapshot_id,
+                self.export_dir / "graph.html",
+                workspace_name=self.workspace.name,
+                report=report,
+                graph_json_relative="graph.json",
+            )
+        return paths
+
+    def _rebuild_incremental_bounded(
+        self,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> BuildResult:
+        """Incremental rebuild that patches SQLite and keeps the working set bounded."""
+
+        def emit(message: str) -> None:
+            if on_progress is not None:
+                on_progress(message)
+
+        base_snapshot_id = self._active_snapshot_id
+        if base_snapshot_id is None:
+            snapshots = self.timeline.list_snapshots()
+            base_snapshot_id = snapshots[-1].snapshot_id if snapshots else None
+        if base_snapshot_id is None or self._working_set is None:
+            return self.build(full=True, on_progress=on_progress)
+
+        emit("Scanning workspace...")
+        scan = self.scanner.scan(
+            incremental=True,
+            on_progress=lambda count: emit(f"Scanning... {count:,} files"),
+        )
+        changed_files = set(scan.added) | set(scan.modified) | set(scan.deleted)
+        if not changed_files:
+            emit("No file changes detected.")
+            return BuildResult(
+                graph=self._working_set.graph,
+                report=IntelligenceReport(),
+                snapshot_id=base_snapshot_id,
+                export_paths={},
+            )
+
+        emit(
+            f"Scan complete: {len(changed_files):,} changed file(s); updating working set..."
+        )
+        parses = self._parse_scan(scan, on_progress=on_progress)
+
+        removed_fqns: set[str] = set()
+        for path in changed_files:
+            if path in scan.deleted:
+                removed_fqns.update(self.registry.files.get(path, RegistryEntry()).provides)
+
+        if self.timeline.gdr_store.has_snapshot(base_snapshot_id):
+            scope = self.timeline.gdr_store.resolve_change_scope(
+                base_snapshot_id,
+                changed_files=changed_files,
+                removed_fqns=removed_fqns,
+            )
+            self._working_set.ensure_files(set(scope.all_files))
+        self.builder.graph = self._working_set.graph
+
+        graph, provides, consumes = self.builder.update(scan, parses)
+
+        deleted_fqns = set()
+        for deleted_path in scan.deleted:
+            deleted_fqns.update(self.registry.remove_file(deleted_path))
+        for path, p_set in provides.items():
+            deleted_fqns.update(self.registry.update_file(path, p_set, consumes.get(path, set())))
+        for fqn in deleted_fqns:
+            for dep_path in self.registry.get_dependents(fqn):
+                self._flag_broken_proxy(graph, dep_path, fqn)
+
+        snapshot_id = self.timeline.record_snapshot_patch(
+            base_snapshot_id,
+            changed_files,
+            graph,
+            label="incremental_bounded",
+        )
+        self._working_set.set_snapshot_id(snapshot_id)
+        self._active_snapshot_id = snapshot_id
+        self._persist_gdr(
+            snapshot_id,
+            base_snapshot_id=base_snapshot_id,
+            changed_files=changed_files,
+        )
+
+        self.clusterer.annotate(graph)
+        emit("Analyzing dependencies...")
+        intelligence = GraphIntelligence(graph, registry=self.registry)
+        intelligence.annotate_coupling_metrics()
+        intel_report = intelligence.analyze()
+
+        emit("Exporting graph...")
+        export_paths = self._run_exports_bounded(snapshot_id, graph, intel_report)
+        self.builder.graph = self._working_set.graph
+
+        return BuildResult(
+            graph=self._working_set.graph,
+            report=intel_report,
+            snapshot_id=snapshot_id,
+            export_paths=export_paths,
+        )
 
     def _parse_scan(
         self,

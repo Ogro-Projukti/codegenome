@@ -37,6 +37,10 @@ ENV_DB_PATH = "CODEGENOME_MCP_DB_PATH"
 ENV_TIMEOUT = "CODEGENOME_MCP_TIMEOUT"
 ENV_LOG_LEVEL = "CODEGENOME_MCP_LOG_LEVEL"
 ENV_TRANSPORT = "CODEGENOME_MCP_TRANSPORT"
+ENV_MEMORY_BOUNDED = "CODEGENOME_MCP_MEMORY_BOUNDED"
+ENV_MAX_QUERY_NODES = "CODEGENOME_MCP_MAX_QUERY_NODES"
+ENV_NEIGHBORHOOD_DEPTH = "CODEGENOME_MCP_NEIGHBORHOOD_DEPTH"
+ENV_FULL_ANALYSIS_ON_DEMAND = "CODEGENOME_MCP_FULL_ANALYSIS_ON_DEMAND"
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -63,6 +67,10 @@ class ServerConfig:
     log_level: str
     transport: Literal["http", "stdio"]
     allow_remote_http: bool = False
+    memory_bounded: bool = False
+    max_query_nodes: int = 500
+    neighborhood_depth: int = 1
+    full_analysis_on_demand: bool = False
 
 
 def configure_logging(level: str) -> None:
@@ -152,6 +160,30 @@ def parse_args(argv: list[str] | None = None) -> ServerConfig:
         action="store_true",
         help="Allow HTTP transport to bind non-loopback addresses.",
     )
+    parser.add_argument(
+        "--memory-bounded",
+        action="store_true",
+        default=os.getenv(ENV_MEMORY_BOUNDED, "").lower() in {"1", "true", "yes"},
+        help="Load query subgraphs on demand instead of keeping the full graph in memory.",
+    )
+    parser.add_argument(
+        "--max-query-nodes",
+        type=int,
+        default=int(os.getenv(ENV_MAX_QUERY_NODES, "500")),
+        help="Maximum nodes loaded for bounded neighborhood queries.",
+    )
+    parser.add_argument(
+        "--neighborhood-depth",
+        type=int,
+        default=int(os.getenv(ENV_NEIGHBORHOOD_DEPTH, "1")),
+        help="BFS depth for bounded get_neighbors queries.",
+    )
+    parser.add_argument(
+        "--full-analysis-on-demand",
+        action="store_true",
+        default=os.getenv(ENV_FULL_ANALYSIS_ON_DEMAND, "").lower() in {"1", "true", "yes"},
+        help="Allow global analysis tools to temporarily load the full graph in bounded mode.",
+    )
     args = parser.parse_args(argv)
     return ServerConfig(
         host=args.host,
@@ -161,6 +193,10 @@ def parse_args(argv: list[str] | None = None) -> ServerConfig:
         log_level=args.log_level,
         transport=args.transport,
         allow_remote_http=args.allow_remote_http,
+        memory_bounded=args.memory_bounded,
+        max_query_nodes=max(1, args.max_query_nodes),
+        neighborhood_depth=max(0, args.neighborhood_depth),
+        full_analysis_on_demand=args.full_analysis_on_demand,
     )
 
 
@@ -203,7 +239,13 @@ class GraphService:
         """
         self.config = config
         self._lock = threading.RLock()
-        self._store = GraphStore(config.db_path)
+        self._store = GraphStore(
+            config.db_path,
+            memory_bounded=config.memory_bounded,
+            max_query_nodes=config.max_query_nodes,
+            neighborhood_depth=config.neighborhood_depth,
+            full_analysis_on_demand=config.full_analysis_on_demand,
+        )
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="codegenome-mcp")
 
     @property
@@ -479,6 +521,7 @@ def create_server(
             "node_count": summary.node_count,
             "edge_count": summary.edge_count,
             "empty": summary.empty,
+            "memory_bounded": service.config.memory_bounded,
             "mcp_activity": tracker.stats(),
         }
         return JSONResponse(payload)

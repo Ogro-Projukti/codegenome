@@ -1242,12 +1242,19 @@
             }, 3500);
         }
 
+        function normalizeGraphNodes(nodes) {
+            return (nodes || []).map(n => ({
+                ...n,
+                id: n.id || n.node_id,
+            }));
+        }
+
         async function fetchGraphData() {
             try {
-                // To avoid caching issues
-                const response = await fetch('/graph.json?t=' + Date.now());
+                const jsonUrl = config.liveJsonUrl || '/graph.json';
+                const response = await fetch(jsonUrl + '?t=' + Date.now());
                 const newData = await response.json();
-                rawNodes = newData.nodes || [];
+                rawNodes = normalizeGraphNodes(newData.nodes);
                 rawEdges = newData.edges || [];
                 
                 if (newData.metadata && newData.metadata.statistics) {
@@ -1770,7 +1777,10 @@
         }
 
         // Initialize when window loads
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
+            if ((!rawNodes || rawNodes.length === 0) && config.liveJsonUrl) {
+                await fetchGraphData();
+            }
             initNetwork();
             initAiChat();
             lucide.createIcons();

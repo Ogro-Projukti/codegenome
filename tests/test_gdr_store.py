@@ -167,6 +167,36 @@ def test_gdr_store_has_snapshot(
     timeline.close()
 
 
+def test_gdr_store_persist_snapshot_patch(
+    tmp_path: Path,
+    two_file_workspace: tuple[Path, object, dict[str, set[str]], dict[str, set[str]]],
+) -> None:
+    _, graph, provides, consumes = two_file_workspace
+    timeline = GraphTimeline(tmp_path / "codegenome.db")
+    registry = GlobalDependencyRegistry()
+    _populate_registry(registry, provides, consumes)
+
+    base_id = timeline.record_snapshot(graph, label="baseline")
+    store = timeline.gdr_store
+    store.persist_snapshot(base_id, registry)
+
+    registry.update_file(
+        "beta.py",
+        {"renamed_helper"},
+        registry.files["beta.py"].consumes,
+    )
+    patched_id = timeline.record_snapshot(graph, label="patched")
+    store.persist_snapshot_patch(base_id, patched_id, {"beta.py"}, registry)
+
+    full = store.hydrate_registry(patched_id)
+    timeline.close()
+
+    assert full.files["alpha.py"] == registry.files["alpha.py"]
+    assert full.files["beta.py"].provides == {"renamed_helper"}
+    assert full.get_provider("renamed_helper") == "beta.py"
+    assert "alpha.py" not in full.get_dependents("renamed_helper")
+
+
 def test_engine_loads_persisted_registry_on_startup(
     tmp_path: Path,
     two_file_workspace: tuple[Path, object, dict[str, set[str]], dict[str, set[str]]],
