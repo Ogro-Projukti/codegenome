@@ -285,17 +285,20 @@ class LiveSession:
 
         http_port = self._http_port
         live_query = f"?live=1&ws={self._ws_port}"
-        local_url = f"http://localhost:{http_port}/graph.html{live_query}"
+        local_url = f"http://localhost:{http_port}/karyotype.html{live_query}"
+        graph_url = f"http://localhost:{http_port}/graph.html{live_query}"
         if self._config.lan:
             lan_ip = get_lan_ip()
-            lan_url = f"http://{lan_ip}:{http_port}/graph.html{live_query}"
+            lan_url = f"http://{lan_ip}:{http_port}/karyotype.html{live_query}"
             self._emit(f"HTTP server listening on http://0.0.0.0:{http_port}")
-            self._emit(f"  Open locally:  {local_url}")
-            self._emit(f"  Share on LAN:  {lan_url}")
+            self._emit(f"  Karyotype (local): {local_url}")
+            self._emit(f"  Karyotype (LAN):   {lan_url}")
+            self._emit(f"  Helix graph view:  {graph_url}")
         else:
             self._emit(
-                f"HTTP Server started. Opening live graph UI at {local_url}..."
+                f"HTTP Server started. Opening live Karyotype UI at {local_url}..."
             )
+            self._emit(f"  Helix graph view available at {graph_url}")
         webbrowser.open(local_url)
         return local_url
 

@@ -61,6 +61,24 @@ def test_genome_summary_returns_lightweight_modules() -> None:
     assert module.module_id == "core"
     assert module.gene_count == 2
     assert 0.0 <= module.health_score <= 1.0
+    # Two free functions map to two "A" nucleotides for the karyotype card.
+    assert module.base_counts["A"] == 2
+    assert set(module.base_counts) == {"A", "A*", "T", "G", "C"}
+
+
+def test_genome_summary_groups_modules_by_leiden_community() -> None:
+    core_main = ParseResult(path="core/main.py", language="python")
+    core_main.symbols = [
+        ParsedSymbol(name="Service", kind="class", start_line=1, end_line=4, qualified_name="Service"),
+    ]
+    graph = _build_graph({"core/main.py": core_main})
+    # Simulate the Leiden annotation that build_service applies before snapshotting.
+    graph.set_node_attr("file:core/main.py", "community_id", 3)
+
+    summary = GenomeProvider(graph).build_summary()
+    module = summary.modules[0]
+    assert module.community_id == 3
+    assert module.base_counts["T"] == 1
 
 
 def test_helix_graph_returns_dense_nodes_and_edges() -> None:

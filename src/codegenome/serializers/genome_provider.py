@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 from codegenome.builder import file_node_id
@@ -81,6 +81,8 @@ class GenomeProvider:
         for path in list_file_paths(self.graph):
             files_by_module[module_id_for_file(path)].append(path)
 
+        base_counts_by_module, community_by_module = self._module_metadata(files_by_module)
+
         for module_id in sorted(files_by_module):
             file_paths = files_by_module[module_id]
             health_scores = [
@@ -92,9 +94,73 @@ class GenomeProvider:
                     module_id=module_id,
                     gene_count=len(file_paths),
                     health_score=round(average_health, 4),
+                    community_id=community_by_module.get(module_id),
+                    base_counts=base_counts_by_module.get(module_id, {}),
                 )
             )
         return GenomeSummaryResponse(modules=modules, snapshot_id=snapshot_id)
+
+    def _module_metadata(
+        self,
+        files_by_module: dict[str, list[str]],
+    ) -> tuple[dict[str, dict[str, int]], dict[str, int | None]]:
+        """Tally A/T/G/C bases and resolve a dominant Leiden community per module.
+
+        Counts are derived in a single pass over the graph so the lightweight
+        karyotype summary stays cheap even on large repositories:
+
+            A — function/method symbols       T — class symbols
+            A* — abstract class/interface      G — import edges
+            C — call edges
+        """
+        base_counts: dict[str, dict[str, int]] = {
+            module_id: {"A": 0, "A*": 0, "T": 0, "G": 0, "C": 0}
+            for module_id in files_by_module
+        }
+        community_votes: dict[str, Counter] = {
+            module_id: Counter() for module_id in files_by_module
+        }
+
+        for _, attrs in self.graph.iter_nodes():
+            file_path = attrs.get("file_path")
+            if not file_path:
+                continue
+            module_id = module_id_for_file(str(file_path))
+            counts = base_counts.get(module_id)
+            if counts is None:
+                continue
+            node_type = attrs.get("node_type")
+            if node_type == "file":
+                community_id = attrs.get("community_id")
+                if community_id is not None:
+                    community_votes[module_id][int(community_id)] += 1
+            elif node_type == "symbol":
+                kind = str(attrs.get("kind", ""))
+                if kind in {"function", "method"}:
+                    counts["A"] += 1
+                elif kind in {"abstract_class", "interface"}:
+                    counts["A*"] += 1
+                elif kind == "class":
+                    counts["T"] += 1
+
+        for source, _, attrs in self.graph.iter_edges():
+            edge_type = attrs.get("edge_type")
+            if edge_type not in {"imports", "calls"}:
+                continue
+            source_attrs = self.graph.get_node(source) if self.graph.has_node(source) else {}
+            file_path = source_attrs.get("file_path")
+            if not file_path:
+                continue
+            counts = base_counts.get(module_id_for_file(str(file_path)))
+            if counts is None:
+                continue
+            counts["G" if edge_type == "imports" else "C"] += 1
+
+        community_by_module: dict[str, int | None] = {
+            module_id: (votes.most_common(1)[0][0] if votes else None)
+            for module_id, votes in community_votes.items()
+        }
+        return base_counts, community_by_module
 
     def build_helix_graph(self, module_id: str) -> HelixGraphResponse | None:
         """Return dense nucleotide nodes and edges for one module."""
@@ -246,6 +312,8 @@ class GenomeProvider:
                         module_id=match.module_id,
                         gene_count=match.gene_count,
                         health_score=match.health_score,
+                        community_id=match.community_id,
+                        base_counts=match.base_counts,
                     )
                 )
         return updates

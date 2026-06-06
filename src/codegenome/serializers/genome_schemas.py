@@ -20,6 +20,14 @@ class ModuleSummary(BaseModel):
     module_id: str
     gene_count: int = Field(ge=0, description="Number of source files (genes) in the module.")
     health_score: float = Field(ge=0.0, le=1.0)
+    community_id: int | None = Field(
+        default=None,
+        description="Leiden community id this module predominantly belongs to.",
+    )
+    base_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="A/T/G/C nucleotide tallies (A, A*, T, G, C) for the module.",
+    )
 
 
 class GenomeSummaryResponse(BaseModel):
@@ -102,6 +110,8 @@ class KaryotypeModuleUpdate(BaseModel):
     module_id: str
     gene_count: int = Field(ge=0)
     health_score: float = Field(ge=0.0, le=1.0)
+    community_id: int | None = None
+    base_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class KaryotypeUpdateMessage(BaseModel):
