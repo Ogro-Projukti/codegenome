@@ -1281,6 +1281,9 @@
                 calculateMetrics();
                 parseGraphData();
                 refreshGraphState();
+                if (network) {
+                    network.stabilize();
+                }
             } catch (err) {
                 console.error("Failed to fetch live graph:", err);
             }

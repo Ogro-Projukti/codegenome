@@ -164,6 +164,45 @@ def test_memory_bounded_rebuild_incremental_patches_snapshot(
         engine.close()
 
 
+def test_bounded_surgical_exports_live_graph_json(
+    tmp_path: Path,
+    two_file_graph: tuple[Path, object],
+) -> None:
+    """Bounded surgical updates must refresh export_dir/graph.json for the live viewer."""
+    import json
+
+    root, _ = two_file_graph
+    config = CodeGenomeConfig(
+        workspace=root,
+        export_formats=("json",),
+        memory_bounded=True,
+        max_working_files=8,
+    )
+    engine = CodeGenomeEngine(config)
+    try:
+        first = engine.build(full=True)
+        assert first.snapshot_id is not None
+
+        live_json = engine.export_dir / "graph.json"
+        assert live_json.exists()
+
+        alpha = root / "alpha.py"
+        alpha.write_text(
+            alpha.read_text(encoding="utf-8") + "\n\ndef live_marker():\n    return 1\n",
+            encoding="utf-8",
+        )
+        second = engine.surgical_update(str(alpha), "alpha.py", "modified")
+        assert second is not None
+        assert second.snapshot_id != first.snapshot_id
+
+        payload = json.loads(live_json.read_text(encoding="utf-8"))
+        node_ids = {node["id"] for node in payload["nodes"]}
+        assert "symbol:alpha.py:live_marker" in node_ids
+        assert payload["snapshot_id"] == second.snapshot_id
+    finally:
+        engine.close()
+
+
 def test_memory_bounded_engine_keeps_empty_graph_after_build(
     tmp_path: Path,
     two_file_graph: tuple[Path, object],

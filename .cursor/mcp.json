@@ -1,9 +1,12 @@
 {
   "mcpServers": {
     "codegenome": {
-      "command": "codegenome",
+      "command": "D:\\GITHUB\\OP\\codegenome\\env\\Scripts\\codegenome.exe",
       "args": [
-        "mcp-start"
+        "mcp-start",
+        "--path",
+        "${workspaceFolder}",
+        "--memory-bounded"
       ]
     }
   }

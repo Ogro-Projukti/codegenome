@@ -15,15 +15,54 @@ You are operating within a repository analyzed by CodeGenome, an architectural k
 4. **Fallback Gracefully**: If native MCP tools are missing and HTTP MCP access is unavailable, incompatible, or returns empty data, tell the user exactly what failed and what to configure. Then, if needed, read `.genome/graph.json` or `.genome/exports/*.md` before resorting to standard text searches.
 5. **Keep Context Fresh**: After modifying code files, remind the user to run `codegenome analyze` or start the live evolution server `codegenome evolve --live` to keep the graph updated.
 
+## MCP Server Setup (memory-bounded)
+
+Use **memory-bounded** MCP for large repositories so the server does not load the full graph into RAM. Configure **one** CodeGenome MCP server per workspace — avoid duplicate bare `mcp-start` processes.
+
+**Cursor / stdio (recommended project config — `.cursor/mcp.json`):**
+
+```json
+{
+  "mcpServers": {
+    "codegenome": {
+      "command": "codegenome",
+      "args": [
+        "mcp-start",
+        "--path",
+        "${workspaceFolder}",
+        "--memory-bounded"
+      ]
+    }
+  }
+}
+```
+
+Use the project virtualenv executable instead of a global install when available (e.g. `env/Scripts/codegenome.exe` on Windows).
+
+**HTTP transport (TUI / manual):**
+
+```bash
+codegenome mcp-start --path . --transport http --port {{MCP_PORT}} --memory-bounded
+```
+
+Verify the server: `http://127.0.0.1:{{MCP_PORT}}/health` should report `"memory_bounded": true` and a non-empty `snapshot_id` after `codegenome analyze`.
+
+**Bounded mode behavior**
+
+- Local tools (`get_node`, `get_neighbors`, `query_graph`, `search_nodes`) load subgraphs from SQLite on demand.
+- Global tools (`get_dead_code`, `get_god_nodes`, `get_circular_deps`, `get_coupling_metrics`, `get_complexity`, `get_churn`, `get_betweenness_centrality`) read **precomputed snapshot metrics** written during the last full `codegenome analyze`.
+- Run a full analyze after large structural changes to refresh global metrics.
+
 ## Available MCP Capabilities
 
 - **Discovery**: `search_nodes` (find symbols)
 - **Relationships**: `get_neighbors` (imports, callers, callees)
 - **Architecture**: `get_entry_points`, `get_dead_code`, `get_circular_deps`, `get_god_nodes` (class scoring uses CBO/LCOM)
-- **Metrics**: `get_complexity`, `get_coupling_metrics` (CBO/LCOM), `get_churn`, `get_graph` (summary statistics)
+- **Metrics**: `get_complexity`, `get_coupling_metrics` (CBO/LCOM), `get_churn`, `get_betweenness_centrality`, `get_graph` (summary statistics)
 - **Evolution**: `get_timeline`, `get_changes` (architectural diffs)
 
 ## Constraints & Behaviors
 
 - Only read `.genome/graph.json` or `.genome/exports/*.md` directly if native MCP tools and local HTTP MCP transport are unavailable or fail to surface enough context.
-- Verify your MCP usage by monitoring tool call success. If native tools are missing, try the configured local HTTP MCP endpoint when possible. If both native and HTTP MCP access fail, politely ask the user to configure their editor's MCP settings to run `codegenome mcp-start` (stdio) or start the server with `codegenome mcp-start --transport http`.
+- If `get_graph` returns `memory_bounded: false` with an empty graph while `.genome/codegenome.db` has snapshots, the editor MCP config is stale or pointing at an unbounded global server — update MCP settings and reload the window.
+- Verify your MCP usage by monitoring tool call success. If native tools are missing, try the configured local HTTP MCP endpoint when possible. If both native and HTTP MCP access fail, politely ask the user to configure their editor's MCP settings to run `codegenome mcp-start --path <workspace> --memory-bounded` (stdio) or start HTTP with `--transport http --port {{MCP_PORT}} --memory-bounded`.

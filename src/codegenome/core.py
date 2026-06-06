@@ -711,10 +711,13 @@ class CodeGenomeEngine:
         selected = tuple(self.config.export_formats)
         paths: dict[str, Path] = {}
         if "json" in selected or not selected:
+            live_json_path = self.export_dir / "graph.json"
             paths["graph_json"] = self.timeline.export_snapshot_json(
                 snapshot_id,
-                self.graph_json_path,
+                live_json_path,
             )
+            if live_json_path != self.graph_json_path:
+                self.timeline.export_snapshot_json(snapshot_id, self.graph_json_path)
         if "html" in selected:
             paths["html"] = self.timeline.export_snapshot_html(
                 snapshot_id,
