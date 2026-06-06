@@ -1,178 +1,52 @@
-"""CodeGenomeEngine orchestration for builds, watching, MCP, and exports."""
+"""CodeGenomeEngine coordinator wiring the engine service layer.
+
+The heavy lifting now lives in :mod:`codegenome.engine`. ``CodeGenomeEngine``
+is a thin facade that composes the focused services and preserves the original
+public API (attributes and methods) for the CLI, TUI, watchers, and tests.
+"""
 
 from __future__ import annotations
 
-import logging
-import os
 import subprocess
-import sys
-import threading
-import time
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable
-
-import networkx as nx
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
+from typing import Iterable
 
 from codegenome.builder import GraphBuilder
 from codegenome.clusterer import GraphClusterer
-from codegenome.exporter import GraphExporter
-from codegenome.intelligence import GraphIntelligence, IntelligenceReport
 from codegenome.parser import SourceParser
-from codegenome.scanner import ScanResult, WorkspaceScanner, FileRecord
-from codegenome.live_graph_monitor import LiveGraphMonitor
+from codegenome.registry import GlobalDependencyRegistry
+from codegenome.scanner import WorkspaceScanner
 from codegenome.timeline import GraphTimeline
-from codegenome.gdr_store import GDRBackedRegistry
-from codegenome.registry import GlobalDependencyRegistry, RegistryEntry
-from codegenome.snapshot_metrics import SnapshotMetrics
 from codegenome.working_set import WorkingSetGraph
+from codegenome.intelligence import IntelligenceReport
+from codegenome.live_graph_monitor import LiveGraphMonitor
 
-LOG = logging.getLogger(__name__)
+from codegenome.engine import (
+    BuildResult,
+    BuildService,
+    CodeGenomeConfig,
+    DEFAULT_EXPORT_FORMATS,
+    EngineContext,
+    ExportService,
+    McpProcessManager,
+    PARSE_PROGRESS_INTERVAL,
+    PersistenceService,
+    ProgressCallback,
+    ScanService,
+    SurgicalUpdateHandler,
+    WatchService,
+    _RebuildHandler,
+)
 
-DEFAULT_EXPORT_FORMATS = ("json", "html", "markdown")
-
-ProgressCallback = Callable[[str], None]
-PARSE_PROGRESS_INTERVAL = 50
-
-
-@dataclass
-class CodeGenomeConfig:
-    """Configuration for CodeGenomeEngine."""
-
-    workspace: Path
-    db_path: Path | None = None
-    export_dir: Path | None = None
-    graph_json_path: Path | None = None
-    export_formats: tuple[str, ...] = DEFAULT_EXPORT_FORMATS
-    start_mcp: bool = False
-    mcp_host: str = "127.0.0.1"
-    mcp_port: int = 7331
-    watch_debounce_seconds: float = 30.0
-    live_graph: bool = False
-    live_graph_poll_seconds: float = 30.0
-    memory_bounded: bool = False
-    max_working_files: int = 64
-
-
-@dataclass
-class BuildResult:
-    """Container for the output of a CodeGenomeEngine build or update."""
-
-    graph: nx.DiGraph
-    report: IntelligenceReport
-    snapshot_id: int | None
-    export_paths: dict[str, Path] = field(default_factory=dict)
-
-
-class _RebuildHandler(FileSystemEventHandler):
-    """File system event handler to trigger incremental rebuilds with debouncing."""
-
-    def __init__(self, engine: CodeGenomeEngine, debounce_seconds: float) -> None:
-        """Initialize the _RebuildHandler.
-
-        Args:
-            engine (CodeGenomeEngine): The engine to invoke rebuilds on.
-            debounce_seconds (float): Delay in seconds before triggering a rebuild.
-        """
-        self._engine = engine
-        self._debounce_seconds = debounce_seconds
-        self._timer: threading.Timer | None = None
-        self._lock = threading.Lock()
-
-    def on_any_event(self, event: FileSystemEvent) -> None:
-        if event.is_directory:
-            return
-        rel_path = self._relative_path(event.src_path)
-        if rel_path is None:
-            return
-        if not self._engine.should_process_path(rel_path):
-            return
-
-        with self._lock:
-            if self._timer is not None:
-                self._timer.cancel()
-            self._timer = threading.Timer(
-                self._debounce_seconds,
-                self._trigger_rebuild,
-            )
-            self._timer.daemon = True
-            self._timer.start()
-
-    def _relative_path(self, src_path: str) -> str | None:
-        try:
-            return Path(src_path).resolve().relative_to(self._engine.workspace).as_posix()
-        except ValueError:
-            return None
-
-    def _trigger_rebuild(self) -> None:
-        LOG.info(
-            "Workspace changes settled; rebuilding graph (debounce=%ss)",
-            self._debounce_seconds,
-        )
-        try:
-            self._engine.rebuild_incremental()
-        except Exception:  # noqa: BLE001 - keep codegenome alive
-            LOG.exception("Incremental rebuild failed")
-
-
-class SurgicalUpdateHandler(FileSystemEventHandler):
-    """Surgically update the graph on individual file changes."""
-    def __init__(self, engine: CodeGenomeEngine, live_server=None) -> None:
-        """Initialize the SurgicalUpdateHandler.
-
-        Args:
-            engine (CodeGenomeEngine): The engine performing graph updates.
-            live_server (LiveGraphServer | None, optional): Server for real-time broadcasts. Defaults to None.
-        """
-        self._engine = engine
-        self._live_server = live_server
-        self._lock = threading.Lock()
-
-    def on_modified(self, event: FileSystemEvent) -> None:
-        self._handle_event(event, "modified")
-
-    def on_created(self, event: FileSystemEvent) -> None:
-        self._handle_event(event, "created")
-
-    def on_deleted(self, event: FileSystemEvent) -> None:
-        self._handle_event(event, "deleted")
-
-    def _handle_event(self, event: FileSystemEvent, event_type: str) -> None:
-        if event.is_directory or not event.src_path.endswith(".py"):
-            return
-
-        with self._lock:
-            try:
-                rel_path = Path(event.src_path).resolve().relative_to(self._engine.workspace).as_posix()
-                if not self._engine.should_process_path(rel_path):
-                    return
-                LOG.info(f"Surgical update triggered by {event_type} on {rel_path}")
-                build_result = self._engine.surgical_update(event.src_path, rel_path, event_type)
-                
-                if self._live_server and build_result and build_result.snapshot_id:
-                    snapshots = self._engine.timeline.list_snapshots()
-                    if len(snapshots) >= 2:
-                        prev_id = snapshots[-2].snapshot_id
-                        curr_id = snapshots[-1].snapshot_id
-                        delta = self._engine.timeline.compute_delta(prev_id, curr_id)
-                        
-                        delta_payload = {
-                            "type": "graph_delta",
-                            "snapshot_id": curr_id,
-                            "added_nodes": delta.added_nodes,
-                            "removed_nodes": delta.removed_nodes,
-                            "modified_nodes": delta.modified_nodes,
-                            "added_edges": delta.added_edges,
-                            "removed_edges": delta.removed_edges,
-                        }
-                        self._live_server.sync_broadcast_graph_delta(delta_payload)
-                        LOG.info("Broadcasted surgical AST delta to WebSocket clients.")
-            except ValueError:
-                pass
-            except Exception:  # noqa: BLE001
-                LOG.exception(f"Surgical update failed for {event.src_path}")
+__all__ = [
+    "BuildResult",
+    "CodeGenomeConfig",
+    "CodeGenomeEngine",
+    "SurgicalUpdateHandler",
+    "DEFAULT_EXPORT_FORMATS",
+    "PARSE_PROGRESS_INTERVAL",
+    "ProgressCallback",
+]
 
 
 class CodeGenomeEngine:
@@ -184,41 +58,89 @@ class CodeGenomeEngine:
         Args:
             config (CodeGenomeConfig): The configuration defining paths and options.
         """
-        self.config = config
-        self.workspace = config.workspace.resolve()
-        self.genome_dir = self.workspace / ".genome"
-        self.db_path = (config.db_path or self.genome_dir / "codegenome.db").resolve()
-        self.export_dir = (config.export_dir or self.genome_dir / "exports").resolve()
-        self.graph_json_path = (
-            config.graph_json_path or self.genome_dir / "graph.json"
-        ).resolve()
-
-        self.genome_dir.mkdir(parents=True, exist_ok=True)
-        self.export_dir.mkdir(parents=True, exist_ok=True)
-
-        self.scanner = WorkspaceScanner(
-            self.workspace,
-            cache_db=self.genome_dir / "scan_cache.db",
+        self.ctx = EngineContext.create(config)
+        self._scan_service = ScanService(self.ctx)
+        self._persistence = PersistenceService(self.ctx)
+        self._export_service = ExportService(self.ctx)
+        self._build_service = BuildService(
+            self.ctx,
+            self._scan_service,
+            self._persistence,
+            self._export_service,
         )
-        self.parser = SourceParser()
-        self.builder = GraphBuilder()
-        self.clusterer = GraphClusterer()
-        self.timeline = GraphTimeline(self.db_path)
-        self.registry = GlobalDependencyRegistry()
-
-        self._observer: Observer | None = None
+        self._watch_service = WatchService(self)
+        self._mcp_manager = McpProcessManager(self.ctx)
         self._live_graph_monitor: LiveGraphMonitor | None = None
-        self._mcp_process: subprocess.Popen[str] | None = None
-        self._working_set: WorkingSetGraph | None = None
-        self._active_snapshot_id: int | None = None
-        self._loaded_existing_graph = self._load_existing_graph()
+
+        self.ctx.loaded_existing_graph = self._persistence.load_existing_graph()
+
+    # -- Backward-compatible attribute access -----------------------------
+
+    @property
+    def config(self) -> CodeGenomeConfig:
+        return self.ctx.config
+
+    @property
+    def workspace(self) -> Path:
+        return self.ctx.workspace
+
+    @property
+    def genome_dir(self) -> Path:
+        return self.ctx.genome_dir
+
+    @property
+    def db_path(self) -> Path:
+        return self.ctx.db_path
+
+    @property
+    def export_dir(self) -> Path:
+        return self.ctx.export_dir
+
+    @property
+    def graph_json_path(self) -> Path:
+        return self.ctx.graph_json_path
+
+    @property
+    def scanner(self) -> WorkspaceScanner:
+        return self.ctx.scanner
+
+    @property
+    def parser(self) -> SourceParser:
+        return self.ctx.parser
+
+    @property
+    def builder(self) -> GraphBuilder:
+        return self.ctx.builder
+
+    @property
+    def clusterer(self) -> GraphClusterer:
+        return self.ctx.clusterer
+
+    @property
+    def timeline(self) -> GraphTimeline:
+        return self.ctx.timeline
+
+    @property
+    def registry(self) -> GlobalDependencyRegistry:
+        return self.ctx.registry
+
+    @property
+    def _working_set(self) -> WorkingSetGraph | None:
+        return self.ctx.working_set
+
+    @property
+    def _active_snapshot_id(self) -> int | None:
+        return self.ctx.active_snapshot_id
+
+    @property
+    def _loaded_existing_graph(self) -> bool:
+        return self.ctx.loaded_existing_graph
+
+    # -- Build / update ----------------------------------------------------
 
     def should_process_path(self, rel_path: str) -> bool:
         """Return False for runtime artifacts and gitignored paths."""
-        normalized = rel_path.replace("\\", "/").strip("/")
-        if not normalized or normalized.startswith(".genome/") or normalized == ".genome":
-            return False
-        return not self.scanner.ignore.is_ignored(normalized)
+        return self.ctx.should_process_path(rel_path)
 
     def build(
         self,
@@ -226,278 +148,42 @@ class CodeGenomeEngine:
         full: bool = False,
         on_progress: ProgressCallback | None = None,
     ) -> BuildResult:
-        """Build or rebuild the graph from source files.
-
-        Args:
-            full (bool, optional): Force a full rebuild instead of incremental. Defaults to False.
-            on_progress (ProgressCallback | None, optional): Optional callback for
-                human-readable progress messages during long-running phases.
-
-        Returns:
-            BuildResult: The result of the build process.
-        """
-        def emit(message: str) -> None:
-            if on_progress is not None:
-                on_progress(message)
-
-        if (
-            not full
-            and self.config.memory_bounded
-            and self._working_set is not None
-            and self._active_snapshot_id is not None
-            and self._loaded_existing_graph
-        ):
-            return self._rebuild_incremental_bounded(on_progress=on_progress)
-
-        incremental = not full and self._loaded_existing_graph
-        emit("Scanning workspace...")
-        scan = self.scanner.scan(
-            incremental=incremental,
-            on_progress=lambda count: emit(f"Scanning... {count:,} files"),
-        )
-        file_count = len(scan.files)
-        change_parts: list[str] = []
-        if scan.added:
-            change_parts.append(f"{len(scan.added):,} added")
-        if scan.modified:
-            change_parts.append(f"{len(scan.modified):,} modified")
-        if scan.deleted:
-            change_parts.append(f"{len(scan.deleted):,} deleted")
-        change_summary = f" ({', '.join(change_parts)})" if change_parts else ""
-        emit(f"Scan complete: {file_count:,} files{change_summary}")
-
-        parses = self._parse_scan(scan, on_progress=on_progress)
-
-        if incremental and self.builder.graph.number_of_nodes() > 0:
-            emit("Updating graph...")
-            graph, provides, consumes = self.builder.update(scan, parses)
-            label = "incremental"
-        else:
-            emit("Building graph...")
-            graph, provides, consumes = self.builder.build(scan, parses)
-            label = "full"
-
-        deleted_fqns = set()
-        for deleted_path in scan.deleted:
-            deleted_fqns.update(self.registry.remove_file(deleted_path))
-            
-        for path, p_set in provides.items():
-            deleted_fqns.update(self.registry.update_file(path, p_set, consumes.get(path, set())))
-            
-        for fqn in deleted_fqns:
-            for dep_path in self.registry.get_dependents(fqn):
-                self._flag_broken_proxy(graph, dep_path, fqn)
-
-        self.clusterer.annotate(graph)
-        emit("Analyzing dependencies...")
-        intelligence = GraphIntelligence(graph, registry=self.registry)
-        intelligence.annotate_coupling_metrics()
-        intel_report = intelligence.analyze()
-
-        emit("Exporting graph...")
-        exporter = GraphExporter(
-            graph,
-            report=intel_report,
-            workspace_name=self.workspace.name,
-        )
-
-        snapshot_id = self.timeline.record_snapshot(graph, label=label)
-        self._persist_gdr(snapshot_id)
-        self._persist_snapshot_metrics(snapshot_id, graph, intel_report)
-        self._active_snapshot_id = snapshot_id
-        if self.config.memory_bounded:
-            self._enter_memory_bounded_mode(snapshot_id)
-        export_paths = self._run_exports(exporter)
-        self._loaded_existing_graph = True
-
-        return BuildResult(
-            graph=graph,
-            report=intel_report,
-            snapshot_id=snapshot_id,
-            export_paths=export_paths,
-        )
+        """Build or rebuild the graph from source files."""
+        return self._build_service.build(full=full, on_progress=on_progress)
 
     def rebuild_incremental(self) -> BuildResult:
-        """Perform an incremental rebuild of the graph.
+        """Perform an incremental rebuild of the graph."""
+        return self._build_service.build(full=False)
 
-        Returns:
-            BuildResult: The result of the incremental rebuild.
-        """
-        return self.build(full=False)
+    def surgical_update(
+        self,
+        abs_path: str,
+        rel_path: str,
+        event_type: str,
+    ) -> BuildResult | None:
+        """Perform a surgical update on the graph for a single file change."""
+        return self._build_service.surgical_update(abs_path, rel_path, event_type)
 
-    def surgical_update(self, abs_path: str, rel_path: str, event_type: str) -> BuildResult | None:
-        """Perform a surgical update on the graph for a single file change.
+    def export(
+        self,
+        formats: Iterable[str] | None = None,
+        *,
+        report: IntelligenceReport | None = None,
+    ) -> dict[str, Path]:
+        """Export the graph to various formats."""
+        return self._export_service.export(formats, report=report)
 
-        Args:
-            abs_path (str): The absolute path of the changed file.
-            rel_path (str): The relative path of the changed file from the workspace.
-            event_type (str): The type of file event (e.g., 'created', 'modified', 'deleted').
-
-        Returns:
-            BuildResult | None: The result of the update, or None if skipped.
-        """
-        if not self._loaded_existing_graph:
-            LOG.warning("Cannot surgical update without existing graph. Rebuilding incremental...")
-            return self.rebuild_incremental()
-
-        files: list[FileRecord] = []
-        added = set()
-        modified = set()
-        deleted = set()
-        parses = {}
-
-        if event_type == "deleted" or not os.path.exists(abs_path):
-            deleted.add(rel_path)
-        else:
-            try:
-                stat = os.stat(abs_path)
-                record = FileRecord(
-                    path=rel_path,
-                    absolute_path=abs_path,
-                    sha256="",
-                    size=stat.st_size,
-                    mtime=stat.st_mtime
-                )
-                files.append(record)
-                if event_type == "created":
-                    added.add(rel_path)
-                else:
-                    modified.add(rel_path)
-                    
-                parsed = self.parser.parse_file(abs_path)
-                if parsed is not None:
-                    parses[rel_path] = parsed
-            except OSError:
-                deleted.add(rel_path)
-
-        scan = ScanResult(
-            root=str(self.workspace),
-            files=files,
-            added=added,
-            modified=modified,
-            deleted=deleted,
-            unchanged=set()
-        )
-
-        changed_files = set(added) | set(modified) | set(deleted)
-        base_snapshot_id = self._active_snapshot_id
-        if base_snapshot_id is None:
-            snapshots = self.timeline.list_snapshots()
-            base_snapshot_id = snapshots[-1].snapshot_id if snapshots else None
-
-        if (
-            self.config.memory_bounded
-            and self._working_set is not None
-            and base_snapshot_id is not None
-            and self.timeline.gdr_store.has_snapshot(base_snapshot_id)
-        ):
-            removed_fqns: set[str] = set()
-            for path in changed_files:
-                if path in deleted:
-                    removed_fqns.update(self.registry.files.get(path, RegistryEntry()).provides)
-            scope = self.timeline.gdr_store.resolve_change_scope(
-                base_snapshot_id,
-                changed_files=changed_files,
-                removed_fqns=removed_fqns,
-            )
-            self._working_set.ensure_files(set(scope.all_files))
-            self._ensure_registry_files(set(scope.all_files))
-            self.builder.graph = self._working_set.graph
-
-        graph, provides, consumes = self.builder.update(scan, parses)
-        
-        deleted_fqns = set()
-        for deleted_path in deleted:
-            deleted_fqns.update(self.registry.remove_file(deleted_path))
-            
-        for path, p_set in provides.items():
-            deleted_fqns.update(self.registry.update_file(path, p_set, consumes.get(path, set())))
-            
-        for fqn in deleted_fqns:
-            for dep_path in self.registry.get_dependents(fqn):
-                self._flag_broken_proxy(graph, dep_path, fqn)
-
-        use_bounded_patch = (
-            self.config.memory_bounded
-            and self._working_set is not None
-            and base_snapshot_id is not None
-        )
-        if use_bounded_patch:
-            snapshot_id = self.timeline.record_snapshot_patch(
-                base_snapshot_id,
-                changed_files,
-                graph,
-                label=f"surgical_{event_type}",
-            )
-            self._working_set.set_snapshot_id(snapshot_id)
-            self._active_snapshot_id = snapshot_id
-            analysis_graph = graph
-        else:
-            snapshot_id = self.timeline.record_snapshot(graph, label=f"surgical_{event_type}")
-            analysis_graph = graph
-
-        self._persist_gdr(
-            snapshot_id,
-            base_snapshot_id=base_snapshot_id if use_bounded_patch else None,
-            changed_files=changed_files if use_bounded_patch else None,
-        )
-
-        if use_bounded_patch:
-            report = self._load_stored_report(snapshot_id) or IntelligenceReport()
-            export_paths = self._run_exports_bounded(snapshot_id, analysis_graph, report)
-            self.builder.graph = self._working_set.graph
-            return BuildResult(
-                graph=self._working_set.graph,
-                report=report,
-                snapshot_id=snapshot_id,
-                export_paths=export_paths,
-            )
-
-        self.clusterer.annotate(analysis_graph)
-        intelligence = GraphIntelligence(analysis_graph, registry=self.registry)
-        intelligence.annotate_coupling_metrics()
-        report = intelligence.analyze()
-
-        exporter = GraphExporter(
-            analysis_graph,
-            report=report,
-            workspace_name=self.workspace.name,
-        )
-        export_paths = self._run_exports(exporter)
-
-        return BuildResult(
-            graph=analysis_graph,
-            report=report,
-            snapshot_id=snapshot_id,
-            export_paths=export_paths,
-        )
-
-    def _flag_broken_proxy(self, graph, file_path: str, fqn: str) -> None:
-        proxy_id = f"proxy:{file_path}:{fqn}"
-        if graph.has_node(proxy_id):
-            graph.set_node_attr(proxy_id, "is_broken", True)
+    # -- Watching ----------------------------------------------------------
 
     def watch(self) -> None:
         """Start watching the workspace for file changes to trigger rebuilds."""
-        handler = _RebuildHandler(self, self.config.watch_debounce_seconds)
-        self._observer = Observer()
-        self._observer.schedule(handler, str(self.workspace), recursive=True)
-        self._observer.start()
-        LOG.info("Watching workspace: %s", self.workspace)
-        try:
-            while True:
-                time.sleep(1.0)
-        except KeyboardInterrupt:
-            LOG.info("Stopping filesystem watch")
-        finally:
-            self.stop_watch()
+        self._watch_service.watch()
 
     def stop_watch(self) -> None:
         """Stop watching the workspace for file changes."""
-        if self._observer is not None:
-            self._observer.stop()
-            self._observer.join(timeout=5.0)
-            self._observer = None
+        self._watch_service.stop()
+
+    # -- Live graph monitor ------------------------------------------------
 
     def monitor_live_graph(self) -> None:
         """Start the live graph monitor in a background thread."""
@@ -513,345 +199,22 @@ class CodeGenomeEngine:
             self._live_graph_monitor.stop()
             self._live_graph_monitor = None
 
+    # -- MCP subprocess ----------------------------------------------------
+
     def start_mcp(self) -> subprocess.Popen[str]:
-        """Start the MCP server as a subprocess.
-
-        Returns:
-            subprocess.Popen[str]: The running MCP server process.
-        """
-        if self._mcp_process and self._mcp_process.poll() is None:
-            return self._mcp_process
-
-        if getattr(sys, "frozen", False):
-            command = [
-                sys.executable,
-                "--run-mcp-server",
-                "--db-path",
-                str(self.db_path),
-                "--host",
-                self.config.mcp_host,
-                "--port",
-                str(self.config.mcp_port),
-                "--transport",
-                "http",
-            ]
-        else:
-            command = [
-                sys.executable,
-                "-m",
-                "codegenome.mcp_server",
-                "--db-path",
-                str(self.db_path),
-                "--host",
-                self.config.mcp_host,
-                "--port",
-                str(self.config.mcp_port),
-                "--transport",
-                "http",
-            ]
-        LOG.info("Starting MCP server: %s", " ".join(command))
-        self._mcp_process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        self._start_mcp_stderr_forwarder(self._mcp_process)
-        return self._mcp_process
-
-    def _start_mcp_stderr_forwarder(self, process: subprocess.Popen[str]) -> None:
-        if process.stderr is None:
-            return
-
-        def forward() -> None:
-            assert process.stderr is not None
-            for line in process.stderr:
-                sys.stderr.write(line)
-                sys.stderr.flush()
-
-        thread = threading.Thread(target=forward, name="codegenome-mcp-stderr", daemon=True)
-        thread.start()
+        """Start the MCP server as a subprocess."""
+        return self._mcp_manager.start()
 
     def stop_mcp(self) -> None:
         """Stop the MCP server subprocess if it is running."""
-        if self._mcp_process is None:
-            return
-        if self._mcp_process.poll() is None:
-            self._mcp_process.terminate()
-            try:
-                self._mcp_process.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                self._mcp_process.kill()
-        self._mcp_process = None
+        self._mcp_manager.stop()
 
-    def export(
-        self,
-        formats: Iterable[str] | None = None,
-        *,
-        report: IntelligenceReport | None = None,
-    ) -> dict[str, Path]:
-        """Export the graph to various formats.
-
-        Args:
-            formats (Iterable[str] | None, optional): Formats to export (e.g. 'json', 'html'). Defaults to None.
-            report (IntelligenceReport | None, optional): An existing report. Defaults to None.
-
-        Returns:
-            dict[str, Path]: A dictionary mapping format names to their exported file paths.
-
-        Raises:
-            RuntimeError: If called before a graph has been built.
-        """
-        graph = self.builder.graph
-        if graph.number_of_nodes() == 0:
-            raise RuntimeError("Cannot export before building a graph")
-
-        if report is None:
-            intelligence = GraphIntelligence(graph)
-            intelligence.annotate_coupling_metrics()
-            report = intelligence.analyze()
-
-        exporter = GraphExporter(
-            graph,
-            report=report,
-            workspace_name=self.workspace.name,
-        )
-        return self._run_exports(exporter, formats=formats)
+    # -- Lifecycle ---------------------------------------------------------
 
     def close(self) -> None:
         """Stop all background tasks and close database connections."""
         self.stop_watch()
         self.stop_live_graph_monitor()
         self.stop_mcp()
-        self.scanner.cache.close()
-        self.timeline.close()
-
-    def _load_existing_graph(self) -> bool:
-        snapshots = self.timeline.list_snapshots()
-        if not snapshots:
-            return False
-        latest = snapshots[-1]
-        self._active_snapshot_id = latest.snapshot_id
-        self._load_existing_registry(latest.snapshot_id)
-        if self.config.memory_bounded:
-            self._enter_memory_bounded_mode(latest.snapshot_id)
-            return latest.node_count > 0
-        self.builder.graph = self.timeline.load_snapshot(latest.snapshot_id)
-        return self.builder.graph.number_of_nodes() > 0
-
-    def _enter_memory_bounded_mode(self, snapshot_id: int) -> None:
-        self._working_set = WorkingSetGraph(
-            self.timeline,
-            snapshot_id,
-            max_files=self.config.max_working_files,
-        )
-        self._working_set.evict_all()
-        self.builder.graph = self._working_set.graph
-
-    def _load_existing_registry(self, snapshot_id: int) -> None:
-        if not self.timeline.gdr_store.has_snapshot(snapshot_id):
-            return
-        if self.config.memory_bounded:
-            self.registry = self.timeline.gdr_store.create_backed_registry(snapshot_id)
-        else:
-            self.registry = self.timeline.gdr_store.hydrate_registry(snapshot_id)
-
-    def _ensure_registry_files(self, file_paths: set[str]) -> None:
-        if isinstance(self.registry, GDRBackedRegistry):
-            self.registry.ensure_files(file_paths)
-
-    def _load_stored_report(self, snapshot_id: int) -> IntelligenceReport | None:
-        metrics = self.timeline.metrics_store.load_snapshot(snapshot_id)
-        return metrics.report if metrics is not None else None
-
-    def _persist_snapshot_metrics(
-        self,
-        snapshot_id: int,
-        graph: object,
-        report: IntelligenceReport,
-    ) -> None:
-        betweenness = tuple(
-            self.clusterer.betweenness_rankings(graph, include_generated=False)
-        )
-        self.timeline.metrics_store.persist_snapshot(
-            snapshot_id,
-            SnapshotMetrics(report=report, betweenness_rankings=betweenness),
-        )
-
-    def _persist_gdr(
-        self,
-        snapshot_id: int | None,
-        *,
-        base_snapshot_id: int | None = None,
-        changed_files: set[str] | None = None,
-    ) -> None:
-        if snapshot_id is None:
-            return
-        if (
-            base_snapshot_id is not None
-            and changed_files is not None
-            and self.timeline.gdr_store.has_snapshot(base_snapshot_id)
-        ):
-            self.timeline.gdr_store.persist_snapshot_patch(
-                base_snapshot_id,
-                snapshot_id,
-                changed_files,
-                self.registry,
-            )
-            return
-        self.timeline.gdr_store.persist_snapshot(snapshot_id, self.registry)
-
-    def _run_exports_bounded(
-        self,
-        snapshot_id: int,
-        analysis_graph: object,
-        report: IntelligenceReport,
-    ) -> dict[str, Path]:
-        """Export artifacts after a bounded surgical update without reloading the full graph."""
-        selected = tuple(self.config.export_formats)
-        paths: dict[str, Path] = {}
-        if "json" in selected or not selected:
-            live_json_path = self.export_dir / "graph.json"
-            paths["graph_json"] = self.timeline.export_snapshot_json(
-                snapshot_id,
-                live_json_path,
-            )
-            if live_json_path != self.graph_json_path:
-                self.timeline.export_snapshot_json(snapshot_id, self.graph_json_path)
-        if "html" in selected:
-            paths["html"] = self.timeline.export_snapshot_html(
-                snapshot_id,
-                self.export_dir / "graph.html",
-                workspace_name=self.workspace.name,
-                report=report,
-                graph_json_relative="graph.json",
-            )
-        return paths
-
-    def _rebuild_incremental_bounded(
-        self,
-        *,
-        on_progress: ProgressCallback | None = None,
-    ) -> BuildResult:
-        """Incremental rebuild that patches SQLite and keeps the working set bounded."""
-
-        def emit(message: str) -> None:
-            if on_progress is not None:
-                on_progress(message)
-
-        base_snapshot_id = self._active_snapshot_id
-        if base_snapshot_id is None:
-            snapshots = self.timeline.list_snapshots()
-            base_snapshot_id = snapshots[-1].snapshot_id if snapshots else None
-        if base_snapshot_id is None or self._working_set is None:
-            return self.build(full=True, on_progress=on_progress)
-
-        emit("Scanning workspace...")
-        scan = self.scanner.scan(
-            incremental=True,
-            on_progress=lambda count: emit(f"Scanning... {count:,} files"),
-        )
-        changed_files = set(scan.added) | set(scan.modified) | set(scan.deleted)
-        if not changed_files:
-            emit("No file changes detected.")
-            return BuildResult(
-                graph=self._working_set.graph,
-                report=IntelligenceReport(),
-                snapshot_id=base_snapshot_id,
-                export_paths={},
-            )
-
-        emit(
-            f"Scan complete: {len(changed_files):,} changed file(s); updating working set..."
-        )
-        parses = self._parse_scan(scan, on_progress=on_progress)
-
-        removed_fqns: set[str] = set()
-        for path in changed_files:
-            if path in scan.deleted:
-                removed_fqns.update(self.registry.files.get(path, RegistryEntry()).provides)
-
-        if self.timeline.gdr_store.has_snapshot(base_snapshot_id):
-            scope = self.timeline.gdr_store.resolve_change_scope(
-                base_snapshot_id,
-                changed_files=changed_files,
-                removed_fqns=removed_fqns,
-            )
-            self._working_set.ensure_files(set(scope.all_files))
-            self._ensure_registry_files(set(scope.all_files))
-        self.builder.graph = self._working_set.graph
-
-        graph, provides, consumes = self.builder.update(scan, parses)
-
-        deleted_fqns = set()
-        for deleted_path in scan.deleted:
-            deleted_fqns.update(self.registry.remove_file(deleted_path))
-        for path, p_set in provides.items():
-            deleted_fqns.update(self.registry.update_file(path, p_set, consumes.get(path, set())))
-        for fqn in deleted_fqns:
-            for dep_path in self.registry.get_dependents(fqn):
-                self._flag_broken_proxy(graph, dep_path, fqn)
-
-        snapshot_id = self.timeline.record_snapshot_patch(
-            base_snapshot_id,
-            changed_files,
-            graph,
-            label="incremental_bounded",
-        )
-        self._working_set.set_snapshot_id(snapshot_id)
-        self._active_snapshot_id = snapshot_id
-        self._persist_gdr(
-            snapshot_id,
-            base_snapshot_id=base_snapshot_id,
-            changed_files=changed_files,
-        )
-
-        intel_report = self._load_stored_report(snapshot_id) or IntelligenceReport()
-
-        emit("Exporting graph...")
-        export_paths = self._run_exports_bounded(snapshot_id, graph, intel_report)
-        self.builder.graph = self._working_set.graph
-
-        return BuildResult(
-            graph=self._working_set.graph,
-            report=intel_report,
-            snapshot_id=snapshot_id,
-            export_paths=export_paths,
-        )
-
-    def _parse_scan(
-        self,
-        scan: ScanResult,
-        *,
-        on_progress: ProgressCallback | None = None,
-    ) -> dict:
-        parses = {}
-        total = len(scan.files)
-        if on_progress is not None:
-            on_progress(f"Parsing 0 / {total:,} files...")
-
-        for index, record in enumerate(scan.files, start=1):
-            rel_path = record.path
-            if scan.deleted and rel_path in scan.deleted:
-                continue
-            parsed = self.parser.parse_file(record.absolute_path)
-            if parsed is not None:
-                parses[rel_path] = parsed
-            if on_progress is not None and (
-                index == 1
-                or index == total
-                or index % PARSE_PROGRESS_INTERVAL == 0
-            ):
-                on_progress(f"Parsing {index:,} / {total:,} files...")
-        return parses
-
-    def _run_exports(
-        self,
-        exporter: GraphExporter,
-        formats: Iterable[str] | None = None,
-    ) -> dict[str, Path]:
-        selected = tuple(formats) if formats is not None else self.config.export_formats
-        paths = exporter.export_all(self.export_dir, selected)
-        json_path = exporter.export_json(self.graph_json_path)
-        paths["graph_json"] = json_path
-        return paths
+        self.ctx.scanner.cache.close()
+        self.ctx.timeline.close()

@@ -15,13 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from codegenome.builder import file_node_id
-from codegenome.exporter import GraphExporter, GraphStatistics
+from codegenome.exporter import GraphStatistics
 from codegenome.gdr_store import GDRStore
 from codegenome.snapshot_metrics import SnapshotMetricsStore
 from codegenome.graph_api import Graph, create_graph
 from codegenome.graph_loader import node_file_path
 from codegenome.intelligence import IntelligenceReport
-from codegenome.resources import copy_html_asset, render_template
 
 
 @dataclass(frozen=True)
@@ -114,6 +113,11 @@ class GraphTimeline:
     def metrics_store(self) -> SnapshotMetricsStore:
         """Precomputed global intelligence metrics per snapshot."""
         return self._metrics_store
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """Read access to the underlying SQLite connection for query helpers."""
+        return self._conn
 
     def close(self) -> None:
         """Close the database connection."""
@@ -566,56 +570,8 @@ class GraphTimeline:
         ]
 
     def export_snapshot_json(self, snapshot_id: int, output_path: Path) -> Path:
-        """Write graph.json for a snapshot by reading SQLite rows directly."""
-        node_rows = self._conn.execute(
-            "SELECT node_id, attrs_json FROM graph_nodes WHERE snapshot_id = ? ORDER BY node_id",
-            (snapshot_id,),
-        ).fetchall()
-        edge_rows = self._conn.execute(
-            """
-            SELECT source_id, target_id, attrs_json
-            FROM graph_edges
-            WHERE snapshot_id = ?
-            ORDER BY source_id, target_id
-            """,
-            (snapshot_id,),
-        ).fetchall()
-
-        nodes = [
-            {"id": row["node_id"], **json.loads(row["attrs_json"])}
-            for row in node_rows
-        ]
-        edges = [
-            {
-                "source": row["source_id"],
-                "target": row["target_id"],
-                **json.loads(row["attrs_json"]),
-            }
-            for row in edge_rows
-        ]
-        info = self._conn.execute(
-            """
-            SELECT snapshot_id, created_at, label, node_count, edge_count
-            FROM snapshots
-            WHERE snapshot_id = ?
-            """,
-            (snapshot_id,),
-        ).fetchone()
-        stats = self.compute_snapshot_statistics(snapshot_id)
-        payload = {
-            "snapshot_id": snapshot_id,
-            "label": info["label"] if info else None,
-            "node_count": info["node_count"] if info else len(nodes),
-            "edge_count": info["edge_count"] if info else len(edges),
-            "metadata": {
-                "statistics": stats.__dict__,
-            },
-            "nodes": nodes,
-            "edges": edges,
-        }
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-        return output_path
+        """Write graph.json for a snapshot (delegates to SnapshotExporter)."""
+        return self._snapshot_exporter().export_json(snapshot_id, output_path)
 
     def compute_snapshot_statistics(self, snapshot_id: int) -> GraphStatistics:
         """Aggregate node-type counts for a snapshot without loading a graph."""
@@ -677,49 +633,20 @@ class GraphTimeline:
         report: IntelligenceReport | None = None,
         graph_json_relative: str = "graph.json",
     ) -> Path:
-        """Write graph.html that loads node data from a sidecar JSON file."""
-        import html as html_module
+        """Write graph.html for a snapshot (delegates to SnapshotExporter)."""
+        return self._snapshot_exporter().export_html(
+            snapshot_id,
+            output_path,
+            workspace_name=workspace_name,
+            report=report,
+            graph_json_relative=graph_json_relative,
+        )
 
-        stats = self.compute_snapshot_statistics(snapshot_id)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        bundled_js = copy_html_asset(
-            "vis-network.min.js",
-            output_path.parent / "vis-network.min.js",
-        )
-        copy_html_asset("graph-viewer.css", output_path.parent / "graph-viewer.css")
-        copy_html_asset("graph-viewer.js", output_path.parent / "graph-viewer.js")
-        script_src = (
-            "vis-network.min.js"
-            if bundled_js is not None
-            else "https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"
-        )
-        graph_payload = {
-            "metadata": {
-                "workspace": workspace_name,
-                "statistics": stats.__dict__,
-            },
-            "nodes": [],
-            "edges": [],
-            "intelligence": GraphExporter.report_to_dict(report),
-        }
-        config = {
-            "workspaceName": workspace_name,
-            "liveJsonUrl": graph_json_relative,
-            "livePollMs": 1500,
-            "maxFileNodes": 200,
-        }
-        output_path.write_text(
-            render_template(
-                "graph.html.j2",
-                workspace_name=html_module.escape(workspace_name),
-                script_src=script_src,
-                graph_json=json.dumps(graph_payload),
-                stats=stats,
-                config_json=json.dumps(config),
-            ),
-            encoding="utf-8",
-        )
-        return output_path
+    def _snapshot_exporter(self):
+        """Build the snapshot exporter lazily to avoid an import cycle."""
+        from codegenome.snapshot_exporter import SnapshotExporter
+
+        return SnapshotExporter(self)
 
     def list_snapshots(self) -> list[SnapshotInfo]:
         """List all recorded snapshots in ascending order.

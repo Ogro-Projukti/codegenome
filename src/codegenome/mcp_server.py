@@ -9,22 +9,29 @@ import logging
 import os
 import sys
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from contextvars import ContextVar
 from dataclasses import dataclass
-from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Literal, TypeVar
+from typing import Any, Callable, Literal
 
 from fastmcp import FastMCP
-from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 
 from codegenome.graph_store import GraphStore, GraphStoreError
-from codegenome.mcp_activity import McpActivityTracker, summarize_args
-from codegenome.version import __version__
+from codegenome.mcp_activity import McpActivityTracker
+from codegenome.mcp_runtime import (
+    LOG,
+    MCP_CLIENT_CONTEXT,
+    MCP_TRANSPORT_CONTEXT,
+    error,
+    log_event,
+    ok,
+)
+from codegenome.mcp_tools import (
+    ClientContextMiddleware,
+    build_guarded_tool,
+    register_graph_tools,
+    register_routes,
+)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7331
@@ -41,19 +48,6 @@ ENV_MEMORY_BOUNDED = "CODEGENOME_MCP_MEMORY_BOUNDED"
 ENV_MAX_QUERY_NODES = "CODEGENOME_MCP_MAX_QUERY_NODES"
 ENV_NEIGHBORHOOD_DEPTH = "CODEGENOME_MCP_NEIGHBORHOOD_DEPTH"
 ENV_FULL_ANALYSIS_ON_DEMAND = "CODEGENOME_MCP_FULL_ANALYSIS_ON_DEMAND"
-
-F = TypeVar("F", bound=Callable[..., Any])
-
-LOG = logging.getLogger("codegenome.mcp_server")
-
-MCP_CLIENT_CONTEXT: ContextVar[str] = ContextVar("mcp_client", default="unknown")
-MCP_TRANSPORT_CONTEXT: ContextVar[str] = ContextVar("mcp_transport", default="http")
-MCP_SESSION_CLIENTS: dict[str, str] = {}
-
-
-def log_event(level: int, event: str, **fields: Any) -> None:
-    payload = {"level": logging.getLevelName(level), "event": event, **fields}
-    LOG.log(level, json.dumps(payload, sort_keys=True))
 
 
 @dataclass(frozen=True)
@@ -85,31 +79,6 @@ def configure_logging(level: str) -> None:
         stream=sys.stderr,
         force=True,
     )
-
-
-def ok(data: Any) -> dict[str, Any]:
-    """Wrap data in a success response dictionary.
-
-    Args:
-        data (Any): The payload data to wrap.
-
-    Returns:
-        dict[str, Any]: A structured response indicating success.
-    """
-    return {"status": "ok", "data": data, "error": None}
-
-
-def error(message: str, *, data: Any = None) -> dict[str, Any]:
-    """Wrap a message in an error response dictionary.
-
-    Args:
-        message (str): The error message.
-        data (Any, optional): Optional additional context data. Defaults to None.
-
-    Returns:
-        dict[str, Any]: A structured response indicating an error.
-    """
-    return {"status": "error", "data": data, "error": message}
 
 
 def parse_args(argv: list[str] | None = None) -> ServerConfig:
@@ -307,88 +276,6 @@ class GraphService:
             ) from exc
 
 
-class ClientContextMiddleware(Middleware):
-    """Capture MCP client identity for activity logging."""
-
-    async def on_initialize(
-        self,
-        context: MiddlewareContext[Any],
-        call_next: CallNext[Any, Any],
-    ) -> Any:
-        client_name = extract_client_name(context)
-        response = await call_next(context)
-        session_id = (
-            context.fastmcp_context.session_id if context.fastmcp_context else None
-        )
-        if session_id and client_name != "unknown":
-            MCP_SESSION_CLIENTS[session_id] = client_name
-        return response
-
-    async def on_call_tool(
-        self,
-        context: MiddlewareContext[Any],
-        call_next: CallNext[Any, Any],
-    ) -> Any:
-        token = MCP_CLIENT_CONTEXT.set(resolve_mcp_client(context))
-        try:
-            return await call_next(context)
-        finally:
-            MCP_CLIENT_CONTEXT.reset(token)
-
-
-def extract_client_name(context: MiddlewareContext[Any]) -> str:
-    """Extract the client name from the MCP request context.
-
-    Args:
-        context (MiddlewareContext[Any]): The request context.
-
-    Returns:
-        str: The extracted client name, or 'unknown' if unavailable.
-    """
-    message = context.message
-    params = getattr(message, "params", None)
-    if params is None:
-        return "unknown"
-
-    client_info = getattr(params, "clientInfo", None)
-    if client_info is None and isinstance(params, dict):
-        client_info = params.get("clientInfo")
-    if client_info is None:
-        return "unknown"
-
-    name = getattr(client_info, "name", None)
-    if name is None and isinstance(client_info, dict):
-        name = client_info.get("name")
-    return str(name) if name else "unknown"
-
-
-def resolve_mcp_client(context: MiddlewareContext[Any]) -> str:
-    """Resolve a unified client identifier based on the MCP context.
-
-    Args:
-        context (MiddlewareContext[Any]): The request context.
-
-    Returns:
-        str: The resolved client identifier.
-    """
-    fastmcp_context = context.fastmcp_context
-    if fastmcp_context is None:
-        return "stdio" if MCP_TRANSPORT_CONTEXT.get() == "stdio" else "unknown"
-
-    session_id = fastmcp_context.session_id
-    if session_id and session_id in MCP_SESSION_CLIENTS:
-        return MCP_SESSION_CLIENTS[session_id]
-
-    client_id = fastmcp_context.client_id
-    if client_id:
-        return client_id
-
-    if session_id:
-        return f"session:{session_id[:12]}"
-
-    return "unknown"
-
-
 def create_server(
     service: GraphService,
     *,
@@ -416,284 +303,9 @@ def create_server(
     )
     mcp.add_middleware(ClientContextMiddleware())
 
-    def guarded_tool(fn: F) -> F:
-        @wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> dict[str, Any]:
-            tool_name = fn.__name__
-            client = MCP_CLIENT_CONTEXT.get()
-            if client == "unknown" and MCP_TRANSPORT_CONTEXT.get() == "stdio":
-                client = "stdio"
-            args_summary = summarize_args(dict(kwargs))
-            started = time.perf_counter()
-
-            try:
-                result = service.run(fn, *args, **kwargs)
-                duration_ms = (time.perf_counter() - started) * 1000
-                event = tracker.record(
-                    tool=tool_name,
-                    client=client,
-                    args=args_summary,
-                    status="ok",
-                    duration_ms=duration_ms,
-                )
-                log_event(
-                    logging.INFO,
-                    "tool_call",
-                    tool=event.tool,
-                    client=event.client,
-                    args=event.args,
-                    status=event.status,
-                    duration_ms=event.duration_ms,
-                )
-                return ok(result)
-            except ValueError as exc:
-                duration_ms = (time.perf_counter() - started) * 1000
-                tracker.record(
-                    tool=tool_name,
-                    client=client,
-                    args=args_summary,
-                    status="error",
-                    duration_ms=duration_ms,
-                    error=str(exc),
-                )
-                log_event(
-                    logging.WARNING,
-                    "tool_call",
-                    tool=tool_name,
-                    client=client,
-                    args=args_summary,
-                    status="error",
-                    duration_ms=round(duration_ms, 2),
-                    error=str(exc),
-                )
-                return error(str(exc))
-            except GraphStoreError as exc:
-                duration_ms = (time.perf_counter() - started) * 1000
-                tracker.record(
-                    tool=tool_name,
-                    client=client,
-                    args=args_summary,
-                    status="error",
-                    duration_ms=duration_ms,
-                    error=str(exc),
-                )
-                log_event(logging.ERROR, "graph_store_error", tool=tool_name, error=str(exc))
-                return error(str(exc))
-            except TimeoutError as exc:
-                duration_ms = (time.perf_counter() - started) * 1000
-                tracker.record(
-                    tool=tool_name,
-                    client=client,
-                    args=args_summary,
-                    status="error",
-                    duration_ms=duration_ms,
-                    error=str(exc),
-                )
-                log_event(logging.ERROR, "timeout", tool=tool_name, error=str(exc))
-                return error(str(exc))
-            except Exception as exc:  # noqa: BLE001 - surface safe MCP errors
-                duration_ms = (time.perf_counter() - started) * 1000
-                tracker.record(
-                    tool=tool_name,
-                    client=client,
-                    args=args_summary,
-                    status="error",
-                    duration_ms=duration_ms,
-                    error=str(exc),
-                )
-                log_event(logging.ERROR, "unexpected_error", tool=tool_name, error=str(exc))
-                LOG.exception("unexpected_error")
-                return error(f"Internal server error: {exc}")
-
-        return wrapper  # type: ignore[return-value]
-
-    @mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
-    async def health(_request: Request) -> JSONResponse:
-        summary = service.run(service.store.summary)
-        payload = {
-            "status": "ok",
-            "service": "codegenome-mcp",
-            "version": __version__,
-            "db_path": str(service.config.db_path),
-            "snapshot_id": summary.snapshot_id,
-            "latest_snapshot_id": summary.latest_snapshot_id,
-            "current": summary.current,
-            "node_count": summary.node_count,
-            "edge_count": summary.edge_count,
-            "empty": summary.empty,
-            "memory_bounded": service.config.memory_bounded,
-            "mcp_activity": tracker.stats(),
-        }
-        return JSONResponse(payload)
-
-    @mcp.custom_route("/mcp/activity", methods=["GET"], include_in_schema=False)
-    async def activity_route(request: Request) -> JSONResponse:
-        limit_raw = request.query_params.get("limit", "50")
-        try:
-            limit = max(1, min(int(limit_raw), tracker._max_events))
-        except ValueError:
-            limit = 50
-        payload = {
-            "status": "ok",
-            "stats": tracker.stats(),
-            "events": tracker.recent(limit=limit),
-        }
-        return JSONResponse(payload)
-
-    @mcp.tool
-    @guarded_tool
-    def get_graph(
-        include_nodes: bool = False,
-        include_edges: bool = False,
-        limit: int = 100,
-    ) -> dict[str, Any]:
-        """Return graph summary and optional node/edge payloads."""
-        return service.store.get_graph(
-            include_nodes=include_nodes,
-            include_edges=include_edges,
-            limit=limit,
-        )
-
-    @mcp.tool
-    @guarded_tool
-    def query_graph(
-        node_type: str | None = None,
-        file_path: str | None = None,
-        kind: str | None = None,
-        limit: int = 50,
-    ) -> dict[str, Any]:
-        """Filter graph nodes by type, file path prefix, or symbol kind."""
-        return service.store.query_graph(
-            node_type=node_type,
-            file_path=file_path,
-            kind=kind,
-            limit=limit,
-        )
-
-    @mcp.tool
-    @guarded_tool
-    def get_node(node_id: str) -> dict[str, Any]:
-        """Return a single node by id."""
-        node = service.store.get_node(node_id)
-        if node is None:
-            raise GraphStoreError(f"Node not found: {node_id}")
-        return node
-
-    @mcp.tool
-    @guarded_tool
-    def get_neighbors(
-        node_id: str,
-        direction: Literal["in", "out", "both"] = "both",
-    ) -> dict[str, Any]:
-        """Return incoming and/or outgoing neighbors for a node."""
-        return service.store.get_neighbors(node_id, direction=direction)
-
-    @mcp.tool
-    @guarded_tool
-    def get_changes(snapshot_from: int, snapshot_to: int) -> dict[str, Any]:
-        """Compute structural changes between two timeline snapshots."""
-        return service.store.get_changes(snapshot_from, snapshot_to)
-
-    @mcp.tool
-    @guarded_tool
-    def get_timeline(node_id: str | None = None) -> dict[str, Any]:
-        """List stored snapshots and optional node history."""
-        return service.store.get_timeline(node_id=node_id)
-
-    @mcp.tool
-    @guarded_tool
-    def get_dead_code(
-        include_generated: bool = False,
-        include_public_api: bool = False,
-    ) -> dict[str, Any]:
-        """Detect likely dead code symbols."""
-        return service.store.get_dead_code(
-            include_generated=include_generated,
-            include_public_api=include_public_api,
-        )
-
-    @mcp.tool
-    @guarded_tool
-    def get_entry_points() -> dict[str, Any]:
-        """Detect graph entry points."""
-        return service.store.get_entry_points()
-
-    @mcp.tool
-    @guarded_tool
-    def get_god_nodes(include_generated: bool = False) -> dict[str, Any]:
-        """Return highly connected god nodes."""
-        return service.store.get_god_nodes(include_generated=include_generated)
-
-    @mcp.tool
-    @guarded_tool
-    def get_circular_deps() -> dict[str, Any]:
-        """Return circular file import dependencies."""
-        return service.store.get_circular_deps()
-
-    @mcp.tool
-    @guarded_tool
-    def get_betweenness_centrality(
-        limit: int = 25,
-        include_generated: bool = False,
-    ) -> dict[str, Any]:
-        """Return file nodes ranked by betweenness centrality."""
-        return service.store.get_betweenness_centrality(
-            limit=limit,
-            include_generated=include_generated,
-        )
-
-    @mcp.tool
-    @guarded_tool
-    def get_complexity(
-        limit: int = 25,
-        include_generated: bool = False,
-    ) -> dict[str, Any]:
-        """Return top complexity-ranked symbols."""
-        return service.store.get_complexity(
-            limit=limit,
-            include_generated=include_generated,
-        )
-
-    @mcp.tool
-    @guarded_tool
-    def get_coupling_metrics(
-        limit: int = 25,
-        include_generated: bool = False,
-        min_cbo: int | None = None,
-    ) -> dict[str, Any]:
-        """Return CBO/LCOM coupling metrics and tightly coupled classes."""
-        return service.store.get_coupling_metrics(
-            limit=limit,
-            include_generated=include_generated,
-            min_cbo=min_cbo,
-        )
-
-    @mcp.tool
-    @guarded_tool
-    def get_churn(
-        file_path: str | None = None,
-        snapshot_from: int | None = None,
-        snapshot_to: int | None = None,
-        limit: int = 25,
-    ) -> dict[str, Any]:
-        """Return churn rankings or a file churn rate across snapshots."""
-        return service.store.get_churn(
-            file_path=file_path,
-            snapshot_from=snapshot_from,
-            snapshot_to=snapshot_to,
-            limit=limit,
-        )
-
-    @mcp.tool
-    @guarded_tool
-    def search_nodes(
-        query: str,
-        node_type: str | None = None,
-        limit: int = 25,
-    ) -> dict[str, Any]:
-        """Search nodes by id, name, qualified name, or file path."""
-        return service.store.search_nodes(query, node_type=node_type, limit=limit)
-
+    guarded_tool = build_guarded_tool(service, tracker)
+    register_routes(mcp, service, tracker)
+    register_graph_tools(mcp, service, guarded_tool)
     return mcp
 
 

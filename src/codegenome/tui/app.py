@@ -1,20 +1,24 @@
-"""Textual TUI for CodeGenome."""
+"""Textual application class for CodeGenome.
+
+``CodeGenomeTUI`` orchestrates the dashboard UI. Cohesive concerns have been
+extracted into sibling modules: CSS (``styles``), the read-only log widget
+(``widgets``), memory-mode helpers (``memory``), and subprocess plumbing
+(``process``). In-process operations (analyze, export, rules) run through the
+shared :class:`~codegenome.service.CodeGenomeService` instead of shelling out to
+``codegenome ...``; only the MCP and live-evolve servers stay as subprocesses.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import sys
 from datetime import datetime
-from contextlib import suppress
-from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import Literal
 
-from textual import events
 from textual.actions import SkipAction
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
-from textual.selection import Selection
 from textual.widgets import (
     Button,
     ContentSwitcher,
@@ -22,7 +26,6 @@ from textual.widgets import (
     Header,
     Input,
     Label,
-    RichLog,
     Static,
     Switch,
     TabbedContent,
@@ -30,6 +33,27 @@ from textual.widgets import (
 )
 from textual.worker import Worker, WorkerState, get_current_worker
 
+from codegenome.service import CodeGenomeService
+from codegenome.tui.constants import (
+    LogChannel,
+    PAGE_INFO,
+    PAGE_MAIN,
+    PAGE_MEMORY,
+    PAGE_SET,
+)
+from codegenome.tui.memory import (
+    MEMORY_PRESETS,
+    MEMORY_SWITCH_LABELS,
+    MemoryModeSettings,
+    analyze_mode_cli_args,
+    evolve_mode_cli_args,
+    format_memory_mode_preview,
+    mcp_mode_cli_args,
+    parse_max_working_files,
+)
+from codegenome.tui.process import ActiveProcess, SubprocessController
+from codegenome.tui.styles import APP_CSS
+from codegenome.tui.widgets import ReadOnlyRichLog
 from codegenome.workspace_info import (
     WorkspaceInfo,
     collect_workspace_info,
@@ -40,465 +64,22 @@ from codegenome.workspace_info import (
     load_graph_live_summary,
 )
 
-LogChannel = Literal["analyze", "mcp", "evolve", "general"]
-
-PAGE_SET = "page-set-workspace"
-PAGE_INFO = "page-workspace-info"
-PAGE_MAIN = "page-main"
-PAGE_MEMORY = "page-memory-setup"
-
-
-@dataclass
-class ActiveProcess:
-    """Track a background subprocess and its log destination."""
-
-    process: asyncio.subprocess.Process
-    channel: LogChannel
-
-
-@dataclass(frozen=True)
-class MemoryModeSettings:
-    """Per-service memory-bounded options for CLI commands."""
-
-    mcp_memory_bounded: bool = False
-    evolve_memory_bounded: bool = False
-    analyze_memory_bounded: bool = False
-    max_working_files: int = 64
-    mcp_full_analysis_on_demand: bool = False
-
-
-def working_set_cli_args(*, memory_bounded: bool, max_working_files: int) -> list[str]:
-    """Return CLI flags for engine commands that use a file working set."""
-    if not memory_bounded:
-        return []
-    return [
-        "--memory-bounded",
-        "--max-working-files",
-        str(max(1, max_working_files)),
-    ]
-
-
-def analyze_mode_cli_args(settings: MemoryModeSettings) -> list[str]:
-    """Return Analyze-specific memory-bounded CLI flags."""
-    return working_set_cli_args(
-        memory_bounded=settings.analyze_memory_bounded,
-        max_working_files=settings.max_working_files,
-    )
-
-
-def evolve_mode_cli_args(settings: MemoryModeSettings) -> list[str]:
-    """Return Live Evolve / graph memory-bounded CLI flags."""
-    return working_set_cli_args(
-        memory_bounded=settings.evolve_memory_bounded,
-        max_working_files=settings.max_working_files,
-    )
-
-
-def mcp_mode_cli_args(settings: MemoryModeSettings) -> list[str]:
-    """Return MCP-specific CLI flags including optional full-analysis on demand."""
-    args: list[str] = []
-    if settings.mcp_memory_bounded:
-        args.append("--memory-bounded")
-    if settings.mcp_memory_bounded and settings.mcp_full_analysis_on_demand:
-        args.append("--full-analysis-on-demand")
-    return args
-
-
-def parse_max_working_files(value: str, *, default: int = 64) -> int:
-    """Parse and clamp the max working files input."""
-    try:
-        parsed = int(value.strip())
-    except ValueError:
-        return default
-    return max(1, parsed)
-
-
-MEMORY_SWITCH_LABELS: dict[str, str] = {
-    "switch-mcp-memory-bounded": "MCP memory-bounded",
-    "switch-evolve-memory-bounded": "Live Evolve memory-bounded",
-    "switch-analyze-memory-bounded": "Analyze memory-bounded",
-    "switch-mcp-full-analysis": "MCP full-graph analysis on demand",
-}
-
-MEMORY_PRESETS: dict[str, MemoryModeSettings] = {
-    "default": MemoryModeSettings(),
-    "all_bounded": MemoryModeSettings(
-        mcp_memory_bounded=True,
-        evolve_memory_bounded=True,
-        analyze_memory_bounded=True,
-        max_working_files=64,
-    ),
-    "full_mcp_bounded_evolve": MemoryModeSettings(
-        evolve_memory_bounded=True,
-        max_working_files=64,
-    ),
-    "bounded_mcp_full_analysis": MemoryModeSettings(
-        mcp_memory_bounded=True,
-        mcp_full_analysis_on_demand=True,
-        max_working_files=64,
-    ),
-}
-
-
-def format_memory_mode_preview(settings: MemoryModeSettings) -> str:
-    """Render a human-readable summary of the active memory settings."""
-    analyze_flags = " ".join(analyze_mode_cli_args(settings)) or "(full graph)"
-    evolve_flags = " ".join(evolve_mode_cli_args(settings)) or "(full graph)"
-    mcp_flags = " ".join(mcp_mode_cli_args(settings)) or "(full graph)"
-
-    lines = [
-        f"[cyan]Analyze[/cyan]  →  {analyze_flags}",
-        f"[cyan]MCP[/cyan]  →  {mcp_flags}",
-        f"[cyan]Live Evolve[/cyan]  →  {evolve_flags}",
-    ]
-    if settings.analyze_memory_bounded or settings.evolve_memory_bounded:
-        lines.append("")
-        lines.append(
-            f"[dim]Working set limit:[/dim] {settings.max_working_files} file(s) "
-            "(Analyze / Evolve only)"
-        )
-    if settings.mcp_memory_bounded and settings.mcp_full_analysis_on_demand:
-        lines.append("[dim]MCP can load the full graph temporarily for global tools.[/dim]")
-    return "\n".join(lines)
-
-
-class ReadOnlyRichLog(RichLog):
-    """Console log output: selectable/copyable, not keyboard-editable."""
-
-    ALLOW_SELECT = True
-
-    def get_selection(self, selection: Selection) -> tuple[str, str] | None:
-        """Return plain text for the selected region."""
-        if not self.lines:
-            return None
-        text = "\n".join(line.text for line in self.lines)
-        extracted = selection.extract(text)
-        if not extracted:
-            return None
-        return extracted, "\n"
-
-    def selection_updated(self, selection: Selection | None) -> None:
-        self._line_cache.clear()
-        self.refresh()
-
-    def on_key(self, event: events.Key) -> None:
-        """Ignore printable keys so log panes cannot be edited."""
-        if event.character and event.character.isprintable():
-            event.prevent_default()
-            event.stop()
-
 
 class CodeGenomeTUI(App):
     """A Textual app for managing CodeGenome."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._subprocesses: set[asyncio.subprocess.Process] = set()
+        self._proc = SubprocessController()
         self.active_processes: list[ActiveProcess] = []
+        self._service = CodeGenomeService()
 
     BINDINGS = [
         ("ctrl+q", "quit_app", "Quit"),
         ("ctrl+c", "copy_log_text", "Copy"),
     ]
 
-    CSS = """
-    Screen {
-        layout: vertical;
-    }
-
-    ContentSwitcher {
-        height: 1fr;
-    }
-
-    .page {
-        height: 1fr;
-        layout: vertical;
-    }
-
-    #page-set-workspace {
-        align: center middle;
-        padding: 2 4;
-    }
-
-    .set-workspace-panel {
-        width: 60;
-        max-width: 100%;
-        height: auto;
-        padding: 2 3;
-        border: solid green;
-    }
-
-    .set-workspace-panel Label {
-        margin-bottom: 1;
-    }
-
-    .set-workspace-panel Input {
-        margin-bottom: 1;
-    }
-
-    .page-actions {
-        height: auto;
-        layout: horizontal;
-        align: center middle;
-        margin-top: 1;
-    }
-
-    #page-workspace-info {
-        padding: 1 2;
-    }
-
-    #workspace-scan-status {
-        height: auto;
-        margin-bottom: 1;
-    }
-
-    #workspace-info-panels {
-        height: 1fr;
-        layout: horizontal;
-    }
-
-    .info-panel {
-        width: 1fr;
-        height: 1fr;
-        layout: vertical;
-        border: solid $surface-lighten-1;
-        margin: 0 1;
-        padding: 1;
-    }
-
-    .info-panel Label {
-        height: auto;
-        margin-bottom: 1;
-    }
-
-    .info-panel ReadOnlyRichLog {
-        height: 1fr;
-        min-height: 6;
-    }
-
-    #workspace-summary-bar {
-        height: auto;
-        padding: 0 2;
-        margin: 1 1 0 1;
-        border: solid green;
-        align: center middle;
-    }
-
-    #workspace-summary {
-        width: 1fr;
-        height: auto;
-    }
-
-    #commands-container {
-        height: auto;
-        padding: 1 2;
-        border: solid blue;
-        margin: 1 1 0 1;
-        layout: vertical;
-    }
-
-    #page-memory-setup {
-        padding: 1 2;
-        layout: vertical;
-    }
-
-    #memory-setup-topbar {
-        height: auto;
-        layout: horizontal;
-        align: center middle;
-        margin-bottom: 1;
-    }
-
-    .memory-topbar-presets {
-        width: 1fr;
-        height: auto;
-        layout: horizontal;
-        align: left middle;
-    }
-
-    .memory-topbar-presets Button {
-        margin: 0 1 0 0;
-    }
-
-    #btn-back-to-main {
-        margin-left: 1;
-    }
-
-    #memory-setup-columns {
-        height: 1fr;
-        layout: horizontal;
-    }
-
-    .memory-column {
-        width: 1fr;
-        height: 1fr;
-        layout: vertical;
-        min-width: 0;
-    }
-
-    #memory-setup-left {
-        border: solid $warning-darken-2;
-        padding: 1;
-        margin-right: 1;
-    }
-
-    #memory-setup-right {
-        border: solid $warning;
-        padding: 1;
-    }
-
-    #memory-setup-controls {
-        height: 1fr;
-        layout: vertical;
-        align: left top;
-    }
-
-    #memory-setup-controls Label {
-        height: auto;
-        margin: 0 1 0 0;
-        text-align: left;
-    }
-
-    #memory-setup-controls Input {
-        width: 8;
-        min-width: 8;
-        max-width: 8;
-        margin: 0;
-    }
-
-    #memory-setup-controls Switch {
-        margin: 0 1 0 0;
-        width: auto;
-        min-width: 5;
-    }
-
-    .memory-setup-option {
-        height: auto;
-        width: 100%;
-        layout: horizontal;
-        align: left middle;
-        content-align: left middle;
-        margin: 0 0 1 0;
-    }
-
-    .memory-mode-hint {
-        height: auto;
-        margin: 0 0 1 0;
-        color: $text-muted;
-    }
-
-    #memory-setup-summary {
-        height: auto;
-        min-height: 6;
-        border: solid $surface-lighten-1;
-        padding: 1;
-        margin: 1 0;
-        background: $surface-darken-1;
-    }
-
-    #memory-setup-console {
-        height: 1fr;
-        min-height: 10;
-    }
-
-    .memory-console-header {
-        height: auto;
-        layout: horizontal;
-        align: left middle;
-        margin-bottom: 1;
-    }
-
-    .memory-column-title {
-        height: auto;
-        margin-bottom: 1;
-    }
-
-    .command-row {
-        height: auto;
-        layout: horizontal;
-        align: center middle;
-        margin: 0 0 1 0;
-    }
-
-    .command-row:last-child {
-        margin-bottom: 0;
-    }
-
-    Button {
-        margin: 0 1;
-    }
-
-    #log-container {
-        height: 1fr;
-        padding: 0 1 1 1;
-        margin: 0 1 1 1;
-    }
-
-    TabbedContent {
-        height: 1fr;
-    }
-
-    TabPane {
-        padding: 0 1;
-    }
-
-    .log-pane {
-        height: 1fr;
-        layout: vertical;
-    }
-
-    .log-pane ReadOnlyRichLog {
-        height: 1fr;
-        width: 1fr;
-        border: solid $surface-lighten-1;
-    }
-
-    #tab-analyze ReadOnlyRichLog {
-        border: solid cyan;
-    }
-
-    #tab-mcp ReadOnlyRichLog {
-        border: solid green;
-    }
-
-    #tab-evolve ReadOnlyRichLog {
-        border: solid magenta;
-    }
-
-    #tab-general ReadOnlyRichLog {
-        border: solid white;
-    }
-
-    .panel-header {
-        height: 1;
-        layout: horizontal;
-        align: left middle;
-        margin-bottom: 1;
-    }
-
-    .panel-header Label {
-        width: 1fr;
-        margin: 0;
-        padding: 0;
-        height: auto;
-    }
-
-    .copy-btn {
-        height: 1;
-        min-width: 8;
-        border: none;
-        padding: 0 1;
-        margin: 0;
-        background: $surface-lighten-1;
-        color: $text;
-        text-style: bold;
-    }
-
-    .copy-btn:hover {
-        background: $primary;
-        color: $text;
-    }
-    """
+    CSS = APP_CSS
 
     LOG_IDS: dict[LogChannel, str] = {
         "analyze": "log-analyze",
@@ -1097,83 +678,80 @@ class CodeGenomeTUI(App):
             )
             self.focus_log_tab("general")
 
+    def _copy_button_targets(self) -> dict[str, tuple[ReadOnlyRichLog, str]]:
+        """Map copy-button ids to their (widget, panel-name) targets."""
+        return {
+            "btn-copy-folders": (self.info_folders_log, "Tracked Folders"),
+            "btn-copy-extensions": (self.info_extensions_log, "File Extensions"),
+            "btn-copy-gitignore": (self.info_gitignore_log, ".gitignore Files"),
+            "btn-copy-analyze": (self.log_widgets["analyze"], "Analyze Log"),
+            "btn-copy-mcp": (self.log_widgets["mcp"], "MCP Server Log"),
+            "btn-copy-evolve": (self.log_widgets["evolve"], "Live Evolve Log"),
+            "btn-copy-general": (self.log_widgets["general"], "General Log"),
+            "btn-copy-memory-console": (self.memory_setup_console, "Memory Setup Console"),
+        }
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle command button presses."""
         button_id = event.button.id
         if button_id in self.COMMAND_BUTTON_IDS and event.button.disabled:
             return
 
-        if button_id == "btn-copy-folders":
-            self.copy_panel_output(self.info_folders_log, "Tracked Folders")
-            return
-        elif button_id == "btn-copy-extensions":
-            self.copy_panel_output(self.info_extensions_log, "File Extensions")
-            return
-        elif button_id == "btn-copy-gitignore":
-            self.copy_panel_output(self.info_gitignore_log, ".gitignore Files")
-            return
-        elif button_id == "btn-copy-analyze":
-            self.copy_panel_output(self.log_widgets["analyze"], "Analyze Log")
-            return
-        elif button_id == "btn-copy-mcp":
-            self.copy_panel_output(self.log_widgets["mcp"], "MCP Server Log")
-            return
-        elif button_id == "btn-copy-evolve":
-            self.copy_panel_output(self.log_widgets["evolve"], "Live Evolve Log")
-            return
-        elif button_id == "btn-copy-general":
-            self.copy_panel_output(self.log_widgets["general"], "General Log")
-            return
-        elif button_id == "btn-copy-memory-console":
-            self.copy_panel_output(self.memory_setup_console, "Memory Setup Console")
+        copy_targets = self._copy_button_targets()
+        if button_id in copy_targets:
+            self.copy_panel_output(*copy_targets[button_id])
             return
 
         if button_id in self.MEMORY_SETUP_BUTTON_IDS:
             self._handle_memory_setup_button(button_id)
             return
 
-        if button_id == "btn-set-workspace":
-            self.refresh_workspace_info()
+        navigation = {
+            "btn-set-workspace": self.refresh_workspace_info,
+            "btn-back-to-set": lambda: self.show_page(PAGE_SET),
+            "btn-continue": self.enter_main_dashboard,
+            "btn-change-workspace": lambda: self.show_page(PAGE_SET),
+            "btn-memory-setup": self.show_memory_setup_console,
+        }
+        if button_id in navigation:
+            navigation[button_id]()
             return
 
-        if button_id == "btn-back-to-set":
-            self.show_page(PAGE_SET)
+        if button_id in ("btn-quit", "btn-quit-main"):
+            self.quit_app()
             return
 
-        if button_id == "btn-continue":
-            self.enter_main_dashboard()
-            return
+        self._dispatch_command_button(
+            button_id,
+            self.get_workspace_path(),
+            self.get_memory_mode_settings(),
+        )
 
-        if button_id == "btn-change-workspace":
-            self.show_page(PAGE_SET)
-            return
-
-        if button_id == "btn-memory-setup":
-            self.show_memory_setup_console()
-            return
-
-        workspace = self.get_workspace_path()
-        memory_settings = self.get_memory_mode_settings()
-
+    def _dispatch_command_button(
+        self,
+        button_id: str,
+        workspace: str,
+        memory_settings: MemoryModeSettings,
+    ) -> None:
+        """Run the engine operation behind a dashboard command button."""
         if button_id == "btn-analyze":
-            self.run_command(
-                [
-                    "codegenome",
-                    "analyze",
-                    *analyze_mode_cli_args(memory_settings),
-                    workspace,
-                ],
-                channel="analyze",
+            self.run_service_task(
+                "Analyze",
+                "analyze",
+                partial(self._analyze_task, workspace, memory_settings),
+                refresh_summary=True,
             )
         elif button_id == "btn-export":
-            self.run_command(
-                ["codegenome", "export", "--format", "json", "--path", workspace],
-                channel="general",
+            self.run_service_task(
+                "Export (json)",
+                "general",
+                partial(self._export_task, workspace),
             )
         elif button_id == "btn-rules":
-            self.run_command(
-                ["codegenome", "rules", "--client", "all", workspace],
-                channel="general",
+            self.run_service_task(
+                "Generate AI Rules",
+                "general",
+                partial(self._rules_task, workspace),
             )
         elif button_id == "btn-mcp-local":
             self.run_command(
@@ -1237,8 +815,88 @@ class CodeGenomeTUI(App):
             self.stop_processes_for_channel("mcp", "MCP server")
         elif button_id == "btn-stop-evolve":
             self.stop_processes_for_channel("evolve", "Live Evolve")
-        elif button_id in ("btn-quit", "btn-quit-main"):
-            self.quit_app()
+
+    # -- In-process service tasks -----------------------------------------
+
+    def _analyze_task(
+        self,
+        workspace: str,
+        settings: MemoryModeSettings,
+        emit,
+    ) -> None:
+        """Run an in-process analyze and report node/edge totals."""
+        result = self._service.analyze(
+            workspace,
+            memory_bounded=settings.analyze_memory_bounded,
+            max_working_files=settings.max_working_files,
+            on_progress=emit,
+        )
+        emit(
+            f"Build complete: {result.graph.number_of_nodes()} nodes, "
+            f"{result.graph.number_of_edges()} edges."
+        )
+
+    def _export_task(self, workspace: str, emit) -> None:
+        """Run an in-process JSON export and report output paths."""
+        result_paths = self._service.export(workspace, ["json"], on_progress=emit)
+        for fmt, out_path in result_paths.items():
+            emit(f"Exported {fmt} → {out_path}")
+
+    def _rules_task(self, workspace: str, emit) -> None:
+        """Generate AI rule files in-process and report output paths."""
+        results = self._service.generate_rules(workspace, clients=["all"], on_progress=emit)
+        if not results:
+            emit("No clients selected or found.")
+            return
+        for label, out_path in results:
+            emit(f"Generated {label} rules at: {out_path}")
+
+    def run_service_task(
+        self,
+        label: str,
+        channel: LogChannel,
+        func,
+        *,
+        refresh_summary: bool = False,
+    ) -> None:
+        """Run a service callable in a thread worker, streaming output to a panel."""
+        self.focus_log_tab(channel)
+        self.write_log(channel, f"\n[bold blue]> {label}[/bold blue]")
+        self.run_worker(
+            partial(self._execute_service_task, label, channel, func, refresh_summary),
+            thread=True,
+            exclusive=False,
+            exit_on_error=False,
+            group="service",
+        )
+
+    def _execute_service_task(
+        self,
+        label: str,
+        channel: LogChannel,
+        func,
+        refresh_summary: bool,
+    ) -> None:
+        """Worker body: invoke ``func`` and marshal log updates to the UI thread."""
+
+        def emit(message: str) -> None:
+            self.call_from_thread(self.write_log, channel, message)
+
+        try:
+            func(emit)
+        except Exception as exc:  # noqa: BLE001 - surface failures in the log panel
+            self.call_from_thread(
+                self.write_log, channel, f"[bold red]{label} failed:[/bold red] {exc}"
+            )
+            return
+
+        self.call_from_thread(
+            self.write_log, channel, f"[[bold green]{label} complete[/bold green]]"
+        )
+        if refresh_summary:
+            self.call_from_thread(self.refresh_dashboard_summary)
+
+    # -- Background subprocesses (servers) --------------------------------
 
     def run_command(
         self,
@@ -1260,51 +918,15 @@ class CodeGenomeTUI(App):
 
     def _track_subprocess(self, process: asyncio.subprocess.Process) -> None:
         """Register a subprocess so shutdown can close its pipes."""
-        self._subprocesses.add(process)
+        self._proc.track(process)
 
     def _untrack_subprocess(self, process: asyncio.subprocess.Process) -> None:
         """Remove a subprocess after its pipes are closed."""
-        self._subprocesses.discard(process)
+        self._proc.untrack(process)
 
     async def _close_subprocess(self, process: asyncio.subprocess.Process) -> None:
-        """Terminate a subprocess and close pipes (avoids Windows Proactor warnings)."""
-        if process.returncode is None:
-            process.terminate()
-            with suppress(asyncio.TimeoutError, ProcessLookupError):
-                await asyncio.wait_for(process.wait(), timeout=5.0)
-            if process.returncode is None:
-                with suppress(ProcessLookupError):
-                    process.kill()
-                    with suppress(asyncio.TimeoutError, ProcessLookupError):
-                        await asyncio.wait_for(process.wait(), timeout=5.0)
-
-        self._close_process_pipes(process)
-
-    def _close_process_pipes(self, process: asyncio.subprocess.Process) -> None:
-        """Close subprocess pipe transports without using StreamReader.wait_closed()."""
-        transport = process._transport
-        if transport is None:
-            return
-
-        for stream in (process.stdout, process.stderr):
-            if stream is not None:
-                with suppress(Exception):
-                    if not stream.at_eof():
-                        stream.feed_eof()
-
-        for fd in (1, 2):
-            with suppress(Exception):
-                pipe_transport = transport.get_pipe_transport(fd)
-                if pipe_transport is not None and not pipe_transport.is_closing():
-                    pipe_transport.close()
-
-        if process.stdin is not None:
-            with suppress(Exception):
-                process.stdin.close()
-
-        with suppress(Exception):
-            if not transport.is_closing():
-                transport.close()
+        """Terminate a subprocess and close its pipes."""
+        await self._proc.close(process)
 
     def _remove_active_process(self, process: asyncio.subprocess.Process) -> LogChannel | None:
         """Remove a process from the active list and return its log channel."""
@@ -1448,11 +1070,7 @@ class CodeGenomeTUI(App):
 
     async def _cleanup_subprocesses(self) -> None:
         """Close every tracked subprocess and its pipes."""
-        if hasattr(self, "_subprocesses"):
-            for process in list(self._subprocesses):
-                with suppress(Exception):
-                    await asyncio.shield(self._close_subprocess(process))
-            self._subprocesses.clear()
+        await self._proc.cleanup_all()
         if hasattr(self, "active_processes"):
             self.active_processes.clear()
 
@@ -1481,7 +1099,7 @@ class CodeGenomeTUI(App):
 
     async def _shutdown_and_exit(self) -> None:
         """Terminate subprocesses, close pipes, then exit cleanly."""
-        if getattr(self, "_subprocesses", None):
+        if self._proc.tracked:
             self.write_log("general", "[yellow]Stopping running commands...[/yellow]")
 
         await self._cleanup_subprocesses()

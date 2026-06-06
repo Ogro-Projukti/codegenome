@@ -195,159 +195,19 @@ def evolve(path: str, live: bool, lan: bool, memory_bounded: bool, max_working_f
         live (bool): Whether to enable WebSocket real-time broadcast.
         lan (bool): Whether to bind services for LAN access.
     """
-    import time
-    import threading
-    import webbrowser
-    from http.server import SimpleHTTPRequestHandler
-    from socketserver import ThreadingTCPServer
-    from watchdog.observers import Observer
-    from codegenome.ai_chat import AIChatError, chat_completion, load_models, settings_payload
-    from codegenome.core import CodeGenomeConfig, CodeGenomeEngine, SurgicalUpdateHandler
+    from codegenome.live_session import LiveSession, LiveSessionConfig
 
-    workspace = Path(path).resolve()
-    config = CodeGenomeConfig(
-        workspace=workspace,
-        export_formats=("json", "html"),
-        memory_bounded=memory_bounded,
-        max_working_files=max(1, max_working_files),
+    session = LiveSession(
+        LiveSessionConfig(
+            workspace=Path(path).resolve(),
+            live=live,
+            lan=lan,
+            memory_bounded=memory_bounded,
+            max_working_files=max(1, max_working_files),
+        ),
+        emit=click.echo,
     )
-    engine = CodeGenomeEngine(config)
-    
-    click.echo(f"Running initial build for {workspace}...")
-    engine.build(full=True)
-    
-    from codegenome.network_utils import get_lan_ip
-
-    http_port = 8000
-    ws_port = 8765
-    bind_host = "0.0.0.0" if lan else "127.0.0.1"
-    lan_ip = get_lan_ip() if lan else "127.0.0.1"
-
-    live_server = None
-    if live:
-        from codegenome.live_server import LiveGraphServer
-        live_server = LiveGraphServer(host=bind_host, port=ws_port)
-        live_server.start_background()
-        if lan:
-            click.echo(f"WebSocket server listening on ws://0.0.0.0:{ws_port}")
-            click.echo(f"  LAN clients connect to ws://{lan_ip}:{ws_port}")
-        else:
-            click.echo(f"WebSocket server initialized on ws://127.0.0.1:{ws_port}")
-
-    def serve_forever():
-        import json
-
-        class QuietHandler(SimpleHTTPRequestHandler):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, directory=str(engine.export_dir), **kwargs)
-
-            def log_message(self, format, *args):
-                pass
-
-            def do_GET(self):
-                if self.path == "/ai/settings":
-                    self._send_json(settings_payload(engine.genome_dir))
-                    return
-                super().do_GET()
-
-            def do_POST(self):
-                if self.path == "/ai/models":
-                    self._handle_models()
-                    return
-                if self.path == "/ai/chat":
-                    self._handle_chat()
-                    return
-                self.send_error(404, "Unknown AI endpoint")
-
-            def _handle_models(self):
-                try:
-                    payload = self._read_json_body()
-                    models = load_models(
-                        engine.genome_dir,
-                        str(payload.get("provider", "")),
-                        _optional_string(payload.get("api_key")),
-                        save_api_key=bool(payload.get("save_api_key")),
-                    )
-                    self._send_json({"models": models})
-                except AIChatError as exc:
-                    self._send_json({"error": str(exc)}, status=400)
-                except Exception as exc:  # noqa: BLE001 - keep live server responsive
-                    self._send_json({"error": f"AI model loading failed: {exc}"}, status=500)
-
-            def _handle_chat(self):
-                try:
-                    payload = self._read_json_body()
-                    answer = chat_completion(
-                        engine.genome_dir,
-                        engine.graph_json_path,
-                        str(payload.get("provider", "")),
-                        str(payload.get("model", "")),
-                        payload.get("messages", []),
-                        _optional_string(payload.get("api_key")),
-                        _optional_string(payload.get("selected_node_id")),
-                        _optional_string(payload.get("context_size")),
-                        save_api_key=bool(payload.get("save_api_key")),
-                    )
-                    self._send_json({"message": answer})
-                except AIChatError as exc:
-                    self._send_json({"error": str(exc)}, status=400)
-                except Exception as exc:  # noqa: BLE001 - keep live server responsive
-                    self._send_json({"error": f"AI chat failed: {exc}"}, status=500)
-
-            def _read_json_body(self):
-                length = int(self.headers.get("Content-Length", "0") or "0")
-                raw = self.rfile.read(length) if length else b"{}"
-                return json.loads(raw.decode("utf-8"))
-
-            def _send_json(self, payload, status=200):
-                body = json.dumps(payload).encode("utf-8")
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                self.wfile.write(body)
-
-        def _optional_string(value):
-            if value is None:
-                return None
-            text = str(value).strip()
-            return text or None
-
-        with ThreadingTCPServer((bind_host if lan else "", http_port), QuietHandler) as httpd:
-            httpd.serve_forever()
-
-    server_thread = threading.Thread(target=serve_forever, daemon=True)
-    server_thread.start()
-
-    live_query = "?live=1"
-    local_url = f"http://localhost:{http_port}/graph.html{live_query}"
-    if lan:
-        lan_url = f"http://{lan_ip}:{http_port}/graph.html{live_query}"
-        click.echo(f"HTTP server listening on http://0.0.0.0:{http_port}")
-        click.echo(f"  Open locally:  {local_url}")
-        click.echo(f"  Share on LAN:  {lan_url}")
-    else:
-        click.echo(f"HTTP Server started. Opening live graph UI at {local_url}...")
-    webbrowser.open(local_url)
-    
-    click.echo("Watching for .py file changes (Press Ctrl+C to stop)...")
-    observer = Observer()
-    handler = SurgicalUpdateHandler(engine, live_server=live_server)
-    observer.schedule(handler, str(workspace), recursive=True)
-    observer.start()
-    
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        click.echo("\nStopping observer...")
-        observer.stop()
-    finally:
-        observer.join()
-        engine.close()
-        if live_server:
-            live_server.stop()
+    session.serve()
 
 
 @cli.command()
