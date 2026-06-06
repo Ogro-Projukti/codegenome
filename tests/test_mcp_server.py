@@ -1,4 +1,4 @@
-"""Tests for Watcher MCP server and graph store."""
+"""Tests for CodeGenome MCP server and graph store."""
 
 from __future__ import annotations
 

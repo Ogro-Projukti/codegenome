@@ -67,7 +67,7 @@ Codegenome writes artifacts under `<workspace>/.genome/`:
 | Path | Purpose |
 |------|---------|
 | `.genome/graph.json` | Latest graph |
-| `.genome/watcher.db` | Timeline snapshots (SQLite) |
+| `.genome/codegenome.db` | Timeline snapshots (SQLite) |
 | `.genome/exports/` | HTML, Markdown, GraphML, etc. |
 | `.genome/scan_cache.db` | Incremental scan cache |
 
@@ -93,7 +93,7 @@ python -m codegenome --workspace . --build --mcp --watch
 
 ```bash
 python -m codegenome.installer \
-  --db-path "$(pwd)/.genome/watcher.db" \
+  --db-path "$(pwd)/.genome/codegenome.db" \
   --client cursor \
   --transport http \
   --host 127.0.0.1 \
@@ -119,7 +119,7 @@ Or run the standalone server module:
 
 ```bash
 python -m codegenome.mcp_server \
-  --db-path ./.genome/watcher.db \
+  --db-path ./.genome/codegenome.db \
   --transport stdio
 ```
 
@@ -127,7 +127,7 @@ See [MCP integration](mcp-integration.md) for environment variables, supported c
 
 ## Optional: standalone binary
 
-To build a PyInstaller binary named `watcher` in `dist/` (requires the `dev` extra):
+To build a PyInstaller binary named `codegenome` in `dist/` (requires the `dev` extra):
 
 ```bash
 python build_cli.py

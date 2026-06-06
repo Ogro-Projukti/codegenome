@@ -1,4 +1,4 @@
-"""Graph query layer for the Watcher MCP server."""
+"""Graph query layer for the CodeGenome MCP server."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ class GraphSummary:
 
 
 class GraphStore:
-    """Load and query a Watcher timeline database.
+    """Load and query a CodeGenome timeline database.
 
     Provides a high-level API to interact with versioned graph snapshots,
     perform queries, and extract code intelligence metrics.

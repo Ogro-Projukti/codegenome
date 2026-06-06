@@ -95,7 +95,7 @@ codegenome evolve --live --lan .
 ## 🛠️ Troubleshooting
 
 ### 1. "No graph found" or Missing Database
-**Symptom:** When attempting to run the MCP server (`codegenome mcp-start`) or export the graph (`codegenome export`), you receive an error that no graph was found or `.genome/watcher.db` does not exist.
+**Symptom:** When attempting to run the MCP server (`codegenome mcp-start`) or export the graph (`codegenome export`), you receive an error that no graph was found or `.genome/codegenome.db` does not exist.
 **Solution:** Codegenome needs to build its initial knowledge graph database before it can be served or exported. Always run `codegenome analyze .` in your workspace first to generate the graph.
 
 ### 2. "unrecognized arguments" CLI Error

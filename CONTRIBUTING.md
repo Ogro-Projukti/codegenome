@@ -165,7 +165,7 @@ Graph artifacts are written under `.genome/` in the analyzed workspace. See [doc
 
 ### Optional: standalone binary
 
-To build a PyInstaller binary (named `watcher` in `dist/`):
+To build a PyInstaller binary (named `codegenome` in `dist/`):
 
 ```bash
 python build_cli.py
@@ -235,7 +235,7 @@ For MCP or client integration problems, also note which client (Cursor, Claude D
 
 ## Documentation
 
-When updating user-facing docs, use **`codegenome`** as the primary CLI name. Document legacy flag-based usage as `python -m codegenome --…`. The on-disk database file remains `.genome/watcher.db`.
+When updating user-facing docs, use **`codegenome`** as the primary CLI name. Document legacy flag-based usage as `python -m codegenome --…`. The on-disk database file remains `.genome/codegenome.db`.
 
 | Document | Purpose |
 |----------|---------|

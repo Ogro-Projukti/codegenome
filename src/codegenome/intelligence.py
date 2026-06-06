@@ -1,4 +1,4 @@
-"""Architectural intelligence analysis over Watcher dependency graphs.
+"""Architectural intelligence analysis over CodeGenome dependency graphs.
 
 This module provides tools for analyzing a dependency graph and deriving
 actionable architectural signals such as dead code detection, circular
@@ -40,7 +40,7 @@ class IntelligenceReport:
 
 
 class GraphIntelligence:
-    """Derive actionable architectural signals from a Watcher graph.
+    """Derive actionable architectural signals from a CodeGenome graph.
 
     This class provides various methods to analyze the codebase graph
     and detect issues like dead code, god nodes, and circular dependencies.

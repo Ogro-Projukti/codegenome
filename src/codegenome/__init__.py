@@ -12,7 +12,7 @@ from .parser import ParseResult, SourceParser
 from .scanner import ScanResult, WorkspaceScanner
 from .timeline import GraphDelta, GraphTimeline, SnapshotInfo
 from .version import __version__
-from .watcher import BuildResult, WatcherConfig, WatcherEngine
+from .core import BuildResult, CodeGenomeConfig, CodeGenomeEngine
 
 __all__ = [
     "__version__",
@@ -31,7 +31,7 @@ __all__ = [
     "SnapshotInfo",
     "SourceParser",
     "SUPPORTED_FORMATS",
-    "WatcherConfig",
-    "WatcherEngine",
+    "CodeGenomeConfig",
+    "CodeGenomeEngine",
     "WorkspaceScanner",
 ]

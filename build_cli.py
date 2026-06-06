@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a standalone watcher CLI binary with PyInstaller."""
+"""Build a standalone codegenome CLI binary with PyInstaller."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ DIST = ROOT / "dist"
 BUILD = ROOT / "build"
 SPEC = ROOT / "codegenome.spec"
 
-BINARY_NAME = "watcher"
+BINARY_NAME = "codegenome"
 
 HIDDEN_IMPORTS = [
     "codegenome",
@@ -187,7 +187,7 @@ def build(*, clean: bool = True) -> Path:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build watcher standalone binary")
+    parser = argparse.ArgumentParser(description="Build codegenome standalone binary")
     parser.add_argument(
         "--no-clean",
         action="store_true",

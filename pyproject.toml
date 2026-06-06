@@ -9,7 +9,7 @@ description = "Open-source CLI for building and querying local codebase knowledg
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-authors = [{ name = "Watcher Contributors" }]
+authors = [{ name = "CodeGenome Contributors" }]
 keywords = ["code-analysis", "knowledge-graph", "mcp", "cli", "tree-sitter"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -52,10 +52,10 @@ dependencies = [
 dev = ["pytest", "pytest-cov", "ruff", "pyinstaller>=6.0,<7"]
 
 [project.urls]
-Homepage = "https://github.com/watcher-dev/codegenome"
-Documentation = "https://github.com/watcher-dev/codegenome#readme"
-Repository = "https://github.com/watcher-dev/codegenome"
-Issues = "https://github.com/watcher-dev/codegenome/issues"
+Homepage = "https://github.com/codegenome-dev/codegenome"
+Documentation = "https://github.com/codegenome-dev/codegenome#readme"
+Repository = "https://github.com/codegenome-dev/codegenome"
+Issues = "https://github.com/codegenome-dev/codegenome/issues"
 
 [project.scripts]
 codegenome = "codegenome.cli:cli"

@@ -152,7 +152,7 @@
 
     if (window.location.protocol === 'file:') {
       setLivePending(false);
-      showToast('Open via Watcher extension for live updates.');
+      showToast('Open via CodeGenome extension for live updates.');
       return;
     }
 
@@ -183,7 +183,7 @@
   }
 
   function readEmbeddedGraph() {
-    const element = document.getElementById('watcher-graph-data');
+    const element = document.getElementById('codegenome-graph-data');
     if (!element || !element.textContent) {
       return null;
     }
