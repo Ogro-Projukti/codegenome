@@ -51,6 +51,7 @@ from codegenome.tui.memory import (
     mcp_mode_cli_args,
     parse_max_working_files,
 )
+from codegenome.tui.mcp_stats import fetch_mcp_health, format_mcp_activity_bar
 from codegenome.tui.process import ActiveProcess, SubprocessController
 from codegenome.tui.styles import APP_CSS
 from codegenome.tui.widgets import ReadOnlyRichLog
@@ -217,6 +218,11 @@ class CodeGenomeTUI(App):
                                         variant="default",
                                         classes="copy-btn",
                                     )
+                                yield Static(
+                                    id="mcp-activity-stats",
+                                    markup=True,
+                                    classes="mcp-activity-stats",
+                                )
                                 yield ReadOnlyRichLog(id="log-mcp", markup=True, highlight=True)
                         with TabPane("Live Evolve", id="tab-evolve"):
                             with Vertical(classes="log-pane"):
@@ -335,6 +341,7 @@ class CodeGenomeTUI(App):
     def on_mount(self) -> None:
         """Called when app starts. Initializes widgets and state."""
         self._workspace_poll_timer = None
+        self._mcp_stats_poll_timer = None
         self.pages = self.query_one(ContentSwitcher)
         self.workspace_input = self.query_one("#workspace-input", Input)
         self.workspace_scan_status = self.query_one("#workspace-scan-status", Static)
@@ -345,6 +352,8 @@ class CodeGenomeTUI(App):
         self.continue_button = self.query_one("#btn-continue", Button)
         self.set_workspace_button = self.query_one("#btn-set-workspace", Button)
         self.log_tabs = self.query_one(TabbedContent)
+        self.mcp_activity_stats = self.query_one("#mcp-activity-stats", Static)
+        self.mcp_activity_stats.update(format_mcp_activity_bar(None))
         self.log_widgets: dict[LogChannel, ReadOnlyRichLog] = {
             channel: self.query_one(f"#{log_id}", ReadOnlyRichLog)
             for channel, log_id in self.LOG_IDS.items()
@@ -519,6 +528,10 @@ class CodeGenomeTUI(App):
             self._workspace_poll_timer = self.set_interval(
                 5.0, self.background_refresh_workspace_info
             )
+        if getattr(self, "_mcp_stats_poll_timer", None) is None:
+            self._mcp_stats_poll_timer = self.set_interval(
+                3.0, self.background_refresh_mcp_activity_stats
+            )
 
         if not self._main_initialized:
             self._main_initialized = True
@@ -538,6 +551,25 @@ class CodeGenomeTUI(App):
     def write_log(self, channel: LogChannel, message: str) -> None:
         """Append a line to the log panel for the given channel."""
         self.log_widgets[channel].write(message)
+
+    def background_refresh_mcp_activity_stats(self) -> None:
+        """Poll the MCP health endpoint and refresh the activity stats bar."""
+        if self.pages.current != PAGE_MAIN:
+            return
+        self.run_worker(
+            self._poll_mcp_activity_stats,
+            thread=True,
+            exclusive=True,
+            exit_on_error=False,
+            group="mcp-stats",
+        )
+
+    def _poll_mcp_activity_stats(self) -> None:
+        """Worker body: fetch MCP health and update the stats bar on the UI thread."""
+        payload = fetch_mcp_health()
+        activity = payload.get("mcp_activity") if payload else None
+        text = format_mcp_activity_bar(activity)
+        self.call_from_thread(self.mcp_activity_stats.update, text)
 
     def focus_log_tab(self, channel: LogChannel) -> None:
         """Switch the visible tab to the given log channel."""

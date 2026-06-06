@@ -19,6 +19,8 @@ class ActivityEvent:
     args: dict[str, Any]
     status: str
     duration_ms: float
+    response_tokens: int = 0
+    tokens_saved: int = 0
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -46,6 +48,10 @@ class McpActivityTracker:
         self._lock = threading.RLock()
         self._events: deque[ActivityEvent] = deque(maxlen=self._max_events)
         self._total_calls = 0
+        self._total_tokens_saved = 0
+        self._total_response_tokens = 0
+        self._calls_by_tool: dict[str, int] = {}
+        self._tokens_saved_by_tool: dict[str, int] = {}
         self._last_call_at: float | None = None
         self._last_tool: str | None = None
         self._last_client: str | None = None
@@ -58,6 +64,8 @@ class McpActivityTracker:
         args: dict[str, Any],
         status: str,
         duration_ms: float,
+        response_tokens: int = 0,
+        tokens_saved: int = 0,
         error: str | None = None,
     ) -> ActivityEvent:
         """Record a new tool call event.
@@ -80,11 +88,20 @@ class McpActivityTracker:
             args=args,
             status=status,
             duration_ms=round(duration_ms, 2),
+            response_tokens=max(0, response_tokens),
+            tokens_saved=max(0, tokens_saved),
             error=error,
         )
         with self._lock:
             self._events.appendleft(event)
             self._total_calls += 1
+            if status == "ok":
+                self._total_tokens_saved += event.tokens_saved
+                self._total_response_tokens += event.response_tokens
+                self._calls_by_tool[tool] = self._calls_by_tool.get(tool, 0) + 1
+                self._tokens_saved_by_tool[tool] = (
+                    self._tokens_saved_by_tool.get(tool, 0) + event.tokens_saved
+                )
             self._last_call_at = event.timestamp
             self._last_tool = tool
             self._last_client = client
@@ -101,6 +118,10 @@ class McpActivityTracker:
             return {
                 "total_calls": self._total_calls,
                 "recent_count": len(self._events),
+                "total_tokens_saved": self._total_tokens_saved,
+                "total_response_tokens": self._total_response_tokens,
+                "calls_by_tool": dict(sorted(self._calls_by_tool.items())),
+                "tokens_saved_by_tool": dict(sorted(self._tokens_saved_by_tool.items())),
                 "last_call_at": self._last_call_at,
                 "last_tool": self._last_tool,
                 "last_client": self._last_client,

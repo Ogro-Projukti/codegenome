@@ -28,6 +28,7 @@ def sample_db(tmp_path: Path) -> Path:
         "file:alpha.py",
         node_type="file",
         file_path="alpha.py",
+        size=8000,
         churn=2,
         complexity=1,
     )
@@ -310,6 +311,9 @@ def test_tool_call_records_activity(sample_db: Path) -> None:
     stats = tracker.stats()
     assert stats["total_calls"] == 1
     assert stats["last_tool"] == "search_nodes"
+    assert stats["total_response_tokens"] > 0
+    assert stats["total_tokens_saved"] >= 0
+    assert stats["calls_by_tool"]["search_nodes"] == 1
     service.shutdown()
 
 

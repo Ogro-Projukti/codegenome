@@ -258,6 +258,14 @@ APP_CSS = """
         border: solid cyan;
     }
 
+    .mcp-activity-stats {
+        height: 1;
+        width: 1fr;
+        margin-bottom: 1;
+        padding: 0 1;
+        color: $text-muted;
+    }
+
     #tab-mcp ReadOnlyRichLog {
         border: solid green;
     }

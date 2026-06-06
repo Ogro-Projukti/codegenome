@@ -19,9 +19,15 @@ def test_tracker_records_events_and_stats() -> None:
         args={"query": "auth"},
         status="ok",
         duration_ms=12.5,
+        response_tokens=42,
+        tokens_saved=900,
     )
     stats = tracker.stats()
     assert stats["total_calls"] == 1
+    assert stats["total_tokens_saved"] == 900
+    assert stats["total_response_tokens"] == 42
+    assert stats["calls_by_tool"] == {"search_nodes": 1}
+    assert stats["tokens_saved_by_tool"] == {"search_nodes": 900}
     assert stats["last_tool"] == "search_nodes"
     assert stats["last_client"] == "cursor"
     assert stats["last_call_at"] == event.timestamp
@@ -29,6 +35,8 @@ def test_tracker_records_events_and_stats() -> None:
     recent = tracker.recent(limit=10)
     assert len(recent) == 1
     assert recent[0]["tool"] == "search_nodes"
+    assert recent[0]["response_tokens"] == 42
+    assert recent[0]["tokens_saved"] == 900
 
 
 def test_tracker_ring_buffer_respects_limit() -> None:

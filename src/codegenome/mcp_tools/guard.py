@@ -9,6 +9,7 @@ from typing import Any, Callable, TypeVar
 
 from codegenome.graph_store import GraphStoreError
 from codegenome.mcp_activity import McpActivityTracker, summarize_args
+from codegenome.mcp_token_savings import estimate_token_savings
 from codegenome.mcp_runtime import (
     MCP_CLIENT_CONTEXT,
     MCP_TRANSPORT_CONTEXT,
@@ -49,12 +50,15 @@ def build_guarded_tool(service: Any, tracker: McpActivityTracker) -> Callable[[F
             try:
                 result = service.run(fn, *args, **kwargs)
                 duration_ms = (time.perf_counter() - started) * 1000
+                response_tokens, tokens_saved = estimate_token_savings(service.store, result)
                 event = tracker.record(
                     tool=tool_name,
                     client=client,
                     args=args_summary,
                     status="ok",
                     duration_ms=duration_ms,
+                    response_tokens=response_tokens,
+                    tokens_saved=tokens_saved,
                 )
                 log_event(
                     logging.INFO,
@@ -64,6 +68,8 @@ def build_guarded_tool(service: Any, tracker: McpActivityTracker) -> Callable[[F
                     args=event.args,
                     status=event.status,
                     duration_ms=event.duration_ms,
+                    response_tokens=event.response_tokens,
+                    tokens_saved=event.tokens_saved,
                 )
                 return ok(result)
             except ValueError as exc:
