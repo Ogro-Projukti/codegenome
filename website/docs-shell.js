@@ -110,17 +110,19 @@
     header.innerHTML = `
       <div class="doc-header-inner">
         <a href="${asset('index.html')}" class="doc-brand">
-          <img src="${asset('logo.png')}" alt="" width="32" height="32">
+          <img src="${asset('logo.png')}" alt="Codegenome logo" width="28" height="28" style="border-radius:6px;opacity:0.85;">
           <span class="doc-brand-text">Codegenome</span>
+          <span style="font-size:0.65rem;font-weight:500;color:#9CA3AF;background:#EFECE4;border:1px solid #E8E5DE;padding:0.12rem 0.45rem;border-radius:20px;letter-spacing:0.04em;margin-left:0.2rem;font-family:var(--doc-mono, monospace);">docs</span>
         </a>
         <div class="doc-header-links">
           <a href="${asset('docs/index.html')}" class="doc-header-link">Docs</a>
+          <a href="${asset('docs/intro/quickstart.html')}" class="doc-header-link">Quick Start</a>
           <a href="${asset('index.html')}" class="doc-header-link">Home</a>
-          <a href="https://github.com/Ogro-Projukti/codegenome" class="doc-header-link" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/Ogro-Projukti/codegenome" class="doc-header-link" target="_blank" rel="noopener">GitHub ↗</a>
         </div>
         <button type="button" class="doc-menu-toggle" aria-expanded="false" aria-controls="doc-sidebar">
           <span class="sr-only">Toggle menu</span>
-          <span aria-hidden="true">Menu</span>
+          <span aria-hidden="true">☰ Menu</span>
         </button>
       </div>
     `;

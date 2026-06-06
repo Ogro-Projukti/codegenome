@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await navigator.clipboard.writeText(textToCopy);
         const originalText = btn.textContent;
         btn.textContent = 'Copied!';
-        btn.style.color = 'var(--accent-color)';
+        btn.style.color = 'var(--accent-dark, #5C8283)';
         setTimeout(() => {
           btn.textContent = originalText;
           btn.style.color = '';
@@ -217,74 +217,7 @@ function initGallery() {
 }
 
 function initCanvas() {
-  const canvas = document.getElementById('bioCanvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  
-  let width, height;
-  let nodes = [];
-  
-  function resize() {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
-  }
-  
-  window.addEventListener('resize', resize);
-  resize();
-
-  // Create nodes
-  const nodeCount = Math.floor((width * height) / 20000); // Responsive density
-  for (let i = 0; i < nodeCount; i++) {
-    nodes.push({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: (Math.random() - 0.5) * 0.5,
-      radius: Math.random() * 2 + 1
-    });
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, width, height);
-    
-    // Update and draw nodes
-    ctx.fillStyle = '#00ffaa';
-    for (let i = 0; i < nodes.length; i++) {
-      let node = nodes[i];
-      node.x += node.vx;
-      node.y += node.vy;
-      
-      // Bounce off edges
-      if (node.x < 0 || node.x > width) node.vx *= -1;
-      if (node.y < 0 || node.y > height) node.vy *= -1;
-      
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    
-    // Draw connections
-    ctx.strokeStyle = 'rgba(0, 255, 170, 0.15)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        let dx = nodes[i].x - nodes[j].x;
-        let dy = nodes[i].y - nodes[j].y;
-        let dist = dx * dx + dy * dy;
-        
-        if (dist < 15000) {
-          ctx.beginPath();
-          ctx.moveTo(nodes[i].x, nodes[i].y);
-          ctx.lineTo(nodes[j].x, nodes[j].y);
-          ctx.stroke();
-        }
-      }
-    }
-    
-    requestAnimationFrame(draw);
-  }
-  
-  draw();
+  // Canvas background disabled in warm light theme — hidden via CSS.
 }
 
 // --- GitHub & PyPI Stats with LocalStorage Cache ---
@@ -414,7 +347,7 @@ async function fetchContributors() {
           if (!contributorMap.has(name)) {
             contributorMap.set(name, {
               login: name,
-              avatar_url: 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=0a1f18&color=00ffaa',
+              avatar_url: 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=EFECE4&color=5C8283',
               html_url: 'https://github.com/Ogro-Projukti/codegenome/commits?author=' + encodeURIComponent(name),
               contributions: 1
             });

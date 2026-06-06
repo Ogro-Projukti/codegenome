@@ -25,20 +25,18 @@
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-  <!-- Ambient background elements -->
+  <!-- Soft warm ambient background -->
   <div class="ambient-bg"></div>
-  <div class="grid-overlay"></div>
-  <canvas id="bioCanvas"></canvas>
 
   <main class="container">
     <header class="header">
       <div class="header-logo">
         <a href="index.html" class="logo-link">
           <img src="logo.png" alt="Codegenome Logo" class="logo-img">
-          <h2 class="logo-text">CODE<br>GENOME</h2>
+          <h2 class="logo-text">CODE GENOME</h2>
         </a>
       </div>
       <div class="header-right">
@@ -63,7 +61,7 @@
 
     <section class="hero-section fade-in">
       <div class="hero-title-row">
-        <h1 class="hero-title">The Connectome of Code<br>Mapping the Digital Brain.</h1>
+        <h1 class="hero-title">Turn your codebase into an AI-ready knowledge graph</h1>
         <div class="hero-subtitle">
           <span class="text-highlight">As code evolves, codebase monitoring should evolve too.</span>
         </div>
@@ -71,7 +69,7 @@
       <div class="hero-content">
         <div class="hero-text-col">
           <p class="hero-desc">
-            CodeGenome is a real-time architectural mapping tool that visualizes your codebase as it evolves. It instantly tracks dependencies and analyzes structural changes, helping you navigate complex systems without slowing down your workflow while saving your AI tokens!
+            CodeGenome maps your repository's internal architecture into a live dependency network. It feeds your AI tools (Cursor, Copilot, or Claude Code) instant, flawless context on how your files interact—slashing AI response latency and cutting your LLM token costs by up to 70%
           </p>
           <div class="badge-container">
             <span class="hero-badge">Open Source &bull; MIT License</span>
@@ -215,50 +213,30 @@
 
     </section>
 
-    <section class="gallery-section fade-in" id="gallery">
-      <div class="section-heading gallery-heading">
-        <span class="section-title">Screenshots</span>
-        <p class="gallery-desc">Explore the terminal UI, live graph browser, and interactive architecture views.</p>
+       <!-- ── 3-Step Mental Model Grid ── -->
+    <section class="mental-model-section fade-in">
+      <div class="section-heading" style="text-align:center; margin-bottom:0;">
+        <span class="section-title">How it works</span>
       </div>
-      <div class="gallery-grid" role="list">
-        <button type="button" class="gallery-item" role="listitem" data-gallery-index="0" aria-label="Open screenshot: TUI Workspace Settings">
-          <span class="gallery-frame">
-            <img src="assets/screenshots/tui-view-1-wp-set.png" alt="TUI Workspace Settings" width="640" height="360" loading="lazy">
-          </span>
-          <span class="gallery-caption">TUI Workspace Settings</span>
-        </button>
-        <button type="button" class="gallery-item" role="listitem" data-gallery-index="1" aria-label="Open screenshot: TUI Workspace Info">
-          <span class="gallery-frame">
-            <img src="assets/screenshots/tui-view-2-wp-info.png" alt="TUI Workspace Info" width="640" height="360" loading="lazy">
-          </span>
-          <span class="gallery-caption">TUI Workspace Info</span>
-        </button>
-        <button type="button" class="gallery-item" role="listitem" data-gallery-index="2" aria-label="Open screenshot: TUI Main Panel">
-          <span class="gallery-frame">
-            <img src="assets/screenshots/tui-main-panel.png" alt="TUI Main Panel" width="640" height="360" loading="lazy">
-          </span>
-          <span class="gallery-caption">TUI Main Panel</span>
-        </button>
-        <button type="button" class="gallery-item" role="listitem" data-gallery-index="3" aria-label="Open screenshot: TUI Configuration">
-          <span class="gallery-frame">
-            <img src="assets/screenshots/tui-config.png" alt="TUI Configuration" width="640" height="360" loading="lazy">
-          </span>
-          <span class="gallery-caption">TUI Configuration</span>
-        </button>
-        <button type="button" class="gallery-item" role="listitem" data-gallery-index="4" aria-label="Open screenshot: AI Chat Live Graph">
-          <span class="gallery-frame">
-            <img src="assets/screenshots/ai-chat-live-graph.png" alt="AI Chat Live Graph" width="640" height="360" loading="lazy">
-          </span>
-          <span class="gallery-caption">AI Chat Live Graph</span>
-        </button>
-        <button type="button" class="gallery-item" role="listitem" data-gallery-index="5" aria-label="Open screenshot: Codex Testimonial">
-          <span class="gallery-frame">
-            <img src="assets/screenshots/codex_validation_after_use.png" alt="Codex Testimonial" width="640" height="360" loading="lazy">
-          </span>
-          <span class="gallery-caption">Codex Testimonial</span>
-        </button>
+      <div class="mental-model-grid">
+        <div class="mental-model-card parse">
+          <span class="mental-model-step">[Parse]</span>
+          <h3>Build an AST</h3>
+          <p>Uses localized tree-sitter loops to convert source code files into Abstract Syntax Trees — fast, language-aware, and zero runtime overhead.</p>
+        </div>
+        <div class="mental-model-card map">
+          <span class="mental-model-step">[Map]</span>
+          <h3>Graph Dependencies</h3>
+          <p>Links imports, function calls, and class relationships into an on-disk SQLite knowledge graph that lives in your <code style="font-family:var(--font-mono);font-size:0.83em;background:var(--bg-inset);border:1px solid var(--border-color);padding:0.1em 0.35em;border-radius:4px;color:#7A6AAA">.genome/</code> folder.</p>
+        </div>
+        <div class="mental-model-card stream">
+          <span class="mental-model-step">[Stream]</span>
+          <h3>Serve to AI Agents</h3>
+          <p>Acts as an MCP Server to stream ultra-low-token context windows straight into Cursor, Claude, or any compatible coding agent.</p>
+        </div>
       </div>
     </section>
+
 
     <div id="gallery-lightbox" class="gallery-lightbox" hidden aria-hidden="true">
       <div class="gallery-lightbox-backdrop" data-lightbox-close></div>

@@ -1,15 +1,14 @@
-/* Themed scrollbars — Codegenome dark green / accent */
+/* ── Warm Light Scrollbars — Codegenome ─────────────────── */
 
 :root {
-  --scrollbar-track: #060f0c;
-  --scrollbar-track-raised: #0a1f18;
-  --scrollbar-thumb: #1a4d3a;
-  --scrollbar-thumb-hover: #00ffaa;
-  --scrollbar-thumb-active: #00cc88;
-  --scrollbar-border: rgba(0, 255, 170, 0.12);
-  --scrollbar-glow: rgba(0, 255, 170, 0.25);
-  --scrollbar-size: 10px;
-  --scrollbar-size-thin: 8px;
+  --scrollbar-track:        #F5F3EE;
+  --scrollbar-track-raised: #EFECE4;
+  --scrollbar-thumb:        #D4CFC5;
+  --scrollbar-thumb-hover:  #B5AFA3;
+  --scrollbar-thumb-active: #9CA3AF;
+  --scrollbar-border:       rgba(0, 0, 0, 0.04);
+  --scrollbar-size:         8px;
+  --scrollbar-size-thin:    6px;
 }
 
 /* Firefox */
@@ -42,25 +41,16 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    180deg,
-    #236b52 0%,
-    var(--scrollbar-thumb) 45%,
-    #143d2e 100%
-  );
+  background: var(--scrollbar-thumb);
   border: 2px solid var(--scrollbar-track);
   border-radius: 8px;
   min-height: 40px;
+  transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(
-    180deg,
-    var(--scrollbar-thumb-hover) 0%,
-    #00d492 100%
-  );
+  background: var(--scrollbar-thumb-hover);
   border-color: var(--scrollbar-track-raised);
-  box-shadow: 0 0 10px var(--scrollbar-glow);
 }
 
 ::-webkit-scrollbar-thumb:active {
@@ -71,7 +61,7 @@ html {
   background: var(--scrollbar-track);
 }
 
-/* Narrower bars in sidebars and code blocks */
+/* Narrow bars for sidebar and code blocks */
 .doc-sidebar::-webkit-scrollbar,
 .terminal-body::-webkit-scrollbar,
 .doc-code-block pre::-webkit-scrollbar {

@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="../logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../docs.css">
 </head>
 <body data-page="docs-index">
@@ -21,6 +21,38 @@
 </script>
 <div class="doc-main-content">
   <h1>Codegenome documentation</h1>
+
+  <!-- ── Hero: Zero-config install ── -->
+  <div class="doc-hero-install">
+    <p class="doc-hero-install-title">Get started instantly</p>
+    <div class="doc-code-block">
+      <button class="copy-btn" type="button" data-copy="pip install codegenome">Copy</button>
+      <pre>pip install codegenome</pre>
+    </div>
+    <div class="doc-code-block">
+      <button class="copy-btn" type="button" data-copy="codegenome analyze .">Copy</button>
+      <pre>codegenome analyze .</pre>
+    </div>
+  </div>
+
+  <!-- ── How it works: 3-step concept grid ── -->
+  <div class="doc-concept-grid">
+    <div class="doc-concept-card">
+      <span class="doc-concept-label">[Parse]</span>
+      <h3>Build an AST</h3>
+      <p>Localized tree-sitter loops convert source files into Abstract Syntax Trees — fast and language-aware.</p>
+    </div>
+    <div class="doc-concept-card">
+      <span class="doc-concept-label">[Map]</span>
+      <h3>Graph Dependencies</h3>
+      <p>Links imports, calls, and class relationships into an on-disk SQLite graph in your <code>.genome/</code> folder.</p>
+    </div>
+    <div class="doc-concept-card">
+      <span class="doc-concept-label">[Stream]</span>
+      <h3>Serve to AI Agents</h3>
+      <p>Acts as an MCP Server, streaming ultra-low-token context windows straight into Cursor, Claude, or any MCP client.</p>
+    </div>
+  </div>
 
   <div class="doc-card-grid">
     <a class="doc-card" href="intro/quickstart.html">
