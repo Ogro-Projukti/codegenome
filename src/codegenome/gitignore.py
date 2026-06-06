@@ -11,6 +11,8 @@ IGNORE_FILENAMES = (".gitignore", ".genomeignore")
 DEFAULT_IGNORE_PATTERNS = [
     ".git/",
     ".venv/",
+    "env/",
+    "venv/",
     "node_modules/",
     "__pycache__/",
     "*.pyc",

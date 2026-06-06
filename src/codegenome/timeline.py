@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from codegenome.builder import file_node_id
+from codegenome.gdr_store import GDRStore
 from codegenome.graph_api import Graph, create_graph
 
 
@@ -94,6 +95,13 @@ class GraphTimeline:
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._initialize_schema()
+        self._gdr_store = GDRStore(self._conn)
+        self._gdr_store.initialize_schema()
+
+    @property
+    def gdr_store(self) -> GDRStore:
+        """Snapshot-scoped Global Dependency Registry persistence."""
+        return self._gdr_store
 
     def close(self) -> None:
         """Close the database connection."""

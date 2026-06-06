@@ -76,6 +76,8 @@ def test_ignore_matcher_default_patterns() -> None:
     matcher = IgnoreMatcher()
     assert matcher.is_ignored("node_modules/pkg/index.js")
     assert matcher.is_ignored(".git/config")
+    assert matcher.is_ignored("env/Lib/site-packages/pkg/module.py")
+    assert matcher.is_ignored("venv/lib/python3.11/site-packages/pkg/module.py")
     assert not matcher.is_ignored("src/main.py")
 
 

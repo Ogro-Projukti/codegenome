@@ -10,6 +10,7 @@ from .exporter import GraphExporter, GraphStatistics, SUPPORTED_FORMATS
 from .intelligence import GraphIntelligence, IntelligenceReport
 from .parser import ParseResult, SourceParser
 from .scanner import ScanResult, WorkspaceScanner
+from .gdr_store import ChangeScope, GDRFileEntry, GDRStore
 from .timeline import GraphDelta, GraphTimeline, SnapshotInfo
 from .version import __version__
 from .core import BuildResult, CodeGenomeConfig, CodeGenomeEngine
@@ -20,6 +21,9 @@ __all__ = [
     "ClusterResult",
     "GraphBuilder",
     "GraphClusterer",
+    "ChangeScope",
+    "GDRFileEntry",
+    "GDRStore",
     "GraphDelta",
     "GraphExporter",
     "GraphIntelligence",

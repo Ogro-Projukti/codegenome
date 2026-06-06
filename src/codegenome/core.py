@@ -82,7 +82,7 @@ class _RebuildHandler(FileSystemEventHandler):
         rel_path = self._relative_path(event.src_path)
         if rel_path is None:
             return
-        if rel_path.startswith(".genome"):
+        if not self._engine.should_process_path(rel_path):
             return
 
         with self._lock:
@@ -141,6 +141,8 @@ class SurgicalUpdateHandler(FileSystemEventHandler):
         with self._lock:
             try:
                 rel_path = Path(event.src_path).resolve().relative_to(self._engine.workspace).as_posix()
+                if not self._engine.should_process_path(rel_path):
+                    return
                 LOG.info(f"Surgical update triggered by {event_type} on {rel_path}")
                 build_result = self._engine.surgical_update(event.src_path, rel_path, event_type)
                 
@@ -203,6 +205,13 @@ class CodeGenomeEngine:
         self._live_graph_monitor: LiveGraphMonitor | None = None
         self._mcp_process: subprocess.Popen[str] | None = None
         self._loaded_existing_graph = self._load_existing_graph()
+
+    def should_process_path(self, rel_path: str) -> bool:
+        """Return False for runtime artifacts and gitignored paths."""
+        normalized = rel_path.replace("\\", "/").strip("/")
+        if not normalized or normalized.startswith(".genome/") or normalized == ".genome":
+            return False
+        return not self.scanner.ignore.is_ignored(normalized)
 
     def build(
         self,
@@ -277,6 +286,7 @@ class CodeGenomeEngine:
         )
 
         snapshot_id = self.timeline.record_snapshot(graph, label=label)
+        self._persist_gdr(snapshot_id)
         export_paths = self._run_exports(exporter)
         self._loaded_existing_graph = True
 
@@ -375,6 +385,7 @@ class CodeGenomeEngine:
         )
         
         snapshot_id = self.timeline.record_snapshot(graph, label=f"surgical_{event_type}")
+        self._persist_gdr(snapshot_id)
         export_paths = self._run_exports(exporter)
         
         return BuildResult(
@@ -544,7 +555,17 @@ class CodeGenomeEngine:
             return False
         latest = snapshots[-1]
         self.builder.graph = self.timeline.load_snapshot(latest.snapshot_id)
+        self._load_existing_registry(latest.snapshot_id)
         return self.builder.graph.number_of_nodes() > 0
+
+    def _load_existing_registry(self, snapshot_id: int) -> None:
+        if self.timeline.gdr_store.has_snapshot(snapshot_id):
+            self.registry = self.timeline.gdr_store.hydrate_registry(snapshot_id)
+
+    def _persist_gdr(self, snapshot_id: int | None) -> None:
+        if snapshot_id is None:
+            return
+        self.timeline.gdr_store.persist_snapshot(snapshot_id, self.registry)
 
     def _parse_scan(
         self,
