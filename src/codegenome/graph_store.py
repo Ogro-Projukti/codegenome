@@ -750,6 +750,12 @@ class GraphStore:
             raise GraphStoreError("No snapshot is loaded")
         return self._timeline
 
+    def graph_for_genome(self) -> Graph:
+        """Return the graph used for progressive-disclosure genome endpoints."""
+        if self._memory_bounded:
+            return self._load_full_graph()
+        return self._graph
+
     def _load_full_graph(self) -> Graph:
         timeline = self._require_timeline()
         return timeline.load_snapshot(self._snapshot_id)

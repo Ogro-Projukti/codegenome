@@ -77,6 +77,11 @@ def build_ai_request_handler(engine: CodeGenomeEngine) -> type[SimpleHTTPRequest
         load_models,
         settings_payload,
     )
+    from codegenome.genome_routes import (
+        handle_genome_get,
+        handle_genome_graph_get,
+        handle_genome_structure_get,
+    )
 
     class AIChatRequestHandler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
@@ -89,7 +94,35 @@ def build_ai_request_handler(engine: CodeGenomeEngine) -> type[SimpleHTTPRequest
             if self.path == "/ai/settings":
                 self._send_json(settings_payload(engine.genome_dir))
                 return
+            genome_response = self._handle_genome_get()
+            if genome_response is not None:
+                self._send_genome_response(genome_response)
+                return
             super().do_GET()
+
+        def _handle_genome_get(self):
+            path = self.path.split("?", 1)[0]
+            graph = engine.builder.graph
+            snapshot_id = engine.timeline.list_snapshots()
+            current_snapshot = snapshot_id[-1].snapshot_id if snapshot_id else None
+            if path == "/genome":
+                return handle_genome_get(graph, snapshot_id=current_snapshot)
+            if path.startswith("/genome/") and path.endswith("/graph"):
+                module_id = path[len("/genome/") : -len("/graph")]
+                return handle_genome_graph_get(graph, module_id)
+            if path.startswith("/genome/") and path.endswith("/structure"):
+                module_id = path[len("/genome/") : -len("/structure")]
+                return handle_genome_structure_get(graph, module_id)
+            return None
+
+        def _send_genome_response(self, response):
+            body = response.body
+            self.send_response(response.status_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
 
         def do_POST(self):  # noqa: N802 - stdlib signature
             if self.path == "/ai/models":

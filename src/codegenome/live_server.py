@@ -4,11 +4,27 @@ import asyncio
 import json
 import logging
 import threading
-from typing import Set
+from dataclasses import dataclass
+from typing import Any, Set
 
 import websockets
 
+from codegenome.serializers.genome_provider import (
+    filter_graph_delta_for_module,
+    module_id_for_file,
+    resolve_changed_file_paths,
+)
+from codegenome.serializers.genome_schemas import KaryotypeUpdateMessage
+
 LOG = logging.getLogger(__name__)
+
+
+@dataclass
+class ClientSubscription:
+    """Per-client view subscription for progressive disclosure."""
+
+    level: str = "karyotype"
+    module_id: str | None = None
 
 
 class LiveGraphServer:
@@ -24,23 +40,65 @@ class LiveGraphServer:
         self.host = host
         self.port = port
         self.clients: Set[websockets.WebSocketServerProtocol] = set()
+        self._subscriptions: dict[websockets.WebSocketServerProtocol, ClientSubscription] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
     async def register(self, websocket: websockets.WebSocketServerProtocol) -> None:
-        """Register a new client connection.
+        """Register a new client connection and process subscription messages.
 
         Args:
             websocket (websockets.WebSocketServerProtocol): The connected client websocket.
         """
         self.clients.add(websocket)
+        self._subscriptions[websocket] = ClientSubscription()
         LOG.info(f"WebSocket client connected. Total clients: {len(self.clients)}")
         try:
-            await websocket.wait_closed()
+            async for raw_message in websocket:
+                await self._handle_client_message(websocket, raw_message)
+        except websockets.ConnectionClosed:
+            pass
         finally:
-            self.clients.remove(websocket)
+            self.clients.discard(websocket)
+            self._subscriptions.pop(websocket, None)
             LOG.info(f"WebSocket client disconnected. Total clients: {len(self.clients)}")
+
+    async def _handle_client_message(
+        self,
+        websocket: websockets.WebSocketServerProtocol,
+        raw_message: str | bytes,
+    ) -> None:
+        """Apply a client subscription message such as ``subscribe``."""
+        try:
+            if isinstance(raw_message, bytes):
+                raw_message = raw_message.decode("utf-8")
+            payload = json.loads(raw_message)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            LOG.debug("Ignoring non-JSON WebSocket message from client.")
+            return
+
+        if payload.get("action") != "subscribe":
+            return
+
+        level = str(payload.get("level", "karyotype"))
+        module_id = payload.get("module_id")
+        if level not in {"karyotype", "helix"}:
+            LOG.debug("Ignoring subscribe with unknown level: %s", level)
+            return
+        if level == "helix" and not module_id:
+            LOG.debug("Ignoring helix subscribe without module_id.")
+            return
+
+        self._subscriptions[websocket] = ClientSubscription(
+            level=level,
+            module_id=str(module_id) if module_id is not None else None,
+        )
+        LOG.info(
+            "Client subscribed to %s%s",
+            level,
+            f" ({module_id})" if module_id else "",
+        )
 
     async def _handler(self, websocket, *args, **kwargs) -> None:
         """Handle an incoming WebSocket connection.
@@ -56,7 +114,6 @@ class LiveGraphServer:
         """Start the WebSocket server and wait indefinitely."""
         LOG.info(f"Starting WebSocket server on ws://{self.host}:{self.port}")
         async with websockets.serve(self._handler, self.host, self.port):
-            # Wait until the stop event is set
             while not self._stop_event.is_set():
                 await asyncio.sleep(0.5)
 
@@ -81,26 +138,78 @@ class LiveGraphServer:
         if self._thread:
             self._thread.join(timeout=2.0)
 
-    async def broadcast_graph_delta(self, delta_payload: dict) -> None:
-        """Push a JSON-serializable graph delta to all connected clients.
+    async def broadcast_graph_delta(
+        self,
+        delta_payload: dict[str, Any],
+        *,
+        changed_file: str | None = None,
+        karyotype_updates: list[dict[str, Any]] | None = None,
+        snapshot_id: int | None = None,
+    ) -> None:
+        """Push graph deltas only to clients subscribed to the relevant rooms.
 
         Args:
-            delta_payload (dict): A dictionary representing the graph delta.
+            delta_payload (dict): Full graph delta from the timeline.
+            changed_file (str | None): Relative path of the file that triggered the update.
+            karyotype_updates (list[dict[str, Any]] | None): Lightweight module summaries.
+            snapshot_id (int | None): Current snapshot id for karyotype subscribers.
         """
         if not self.clients:
             return
-            
-        message = json.dumps(delta_payload)
-        websockets.broadcast(self.clients, message)
 
-    def sync_broadcast_graph_delta(self, delta_payload: dict) -> None:
+        changed_files = resolve_changed_file_paths(delta_payload, fallback=changed_file)
+        affected_modules = sorted({module_id_for_file(path) for path in changed_files})
+
+        for websocket in list(self.clients):
+            subscription = self._subscriptions.get(websocket, ClientSubscription())
+            try:
+                if subscription.level == "karyotype":
+                    if not karyotype_updates:
+                        continue
+                    message = KaryotypeUpdateMessage(
+                        modules=karyotype_updates,
+                        snapshot_id=snapshot_id,
+                    )
+                    await websocket.send(message.model_dump_json())
+                    continue
+
+                if subscription.level == "helix" and subscription.module_id:
+                    if subscription.module_id not in affected_modules:
+                        continue
+                    room_delta = filter_graph_delta_for_module(
+                        delta_payload,
+                        subscription.module_id,
+                    )
+                    room_delta["type"] = "graph_delta"
+                    room_delta["module_id"] = subscription.module_id
+                    await websocket.send(json.dumps(room_delta))
+            except websockets.ConnectionClosed:
+                self.clients.discard(websocket)
+                self._subscriptions.pop(websocket, None)
+
+    def sync_broadcast_graph_delta(
+        self,
+        delta_payload: dict[str, Any],
+        *,
+        changed_file: str | None = None,
+        karyotype_updates: list[dict[str, Any]] | None = None,
+        snapshot_id: int | None = None,
+    ) -> None:
         """A thread-safe wrapper to broadcast from a synchronous context.
 
         Args:
             delta_payload (dict): A dictionary representing the graph delta.
+            changed_file (str | None): Relative path of the changed file.
+            karyotype_updates (list[dict[str, Any]] | None): Lightweight module summaries.
+            snapshot_id (int | None): Current snapshot id.
         """
         if self._loop and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(
-                self.broadcast_graph_delta(delta_payload), 
-                self._loop
+                self.broadcast_graph_delta(
+                    delta_payload,
+                    changed_file=changed_file,
+                    karyotype_updates=karyotype_updates,
+                    snapshot_id=snapshot_id,
+                ),
+                self._loop,
             )

@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+from codegenome.serializers.genome_provider import GenomeProvider
+
 if TYPE_CHECKING:
     from codegenome.core import CodeGenomeEngine
 
@@ -126,8 +128,18 @@ class SurgicalUpdateHandler(FileSystemEventHandler):
                             "added_edges": delta.added_edges,
                             "removed_edges": delta.removed_edges,
                         }
-                        self._live_server.sync_broadcast_graph_delta(delta_payload)
-                        LOG.info("Broadcasted surgical AST delta to WebSocket clients.")
+                        provider = GenomeProvider(self._engine.builder.graph)
+                        karyotype_updates = [
+                            item.model_dump(mode="json")
+                            for item in provider.karyotype_updates_for_files([rel_path])
+                        ]
+                        self._live_server.sync_broadcast_graph_delta(
+                            delta_payload,
+                            changed_file=rel_path,
+                            karyotype_updates=karyotype_updates,
+                            snapshot_id=curr_id,
+                        )
+                        LOG.info("Broadcasted surgical AST delta to subscribed WebSocket clients.")
             except ValueError:
                 pass
             except Exception:  # noqa: BLE001

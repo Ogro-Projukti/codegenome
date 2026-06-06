@@ -7,6 +7,7 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from codegenome.genome_routes import register_genome_routes
 from codegenome.mcp_activity import McpActivityTracker
 from codegenome.version import __version__
 
@@ -52,3 +53,5 @@ def register_routes(mcp: Any, service: Any, tracker: McpActivityTracker) -> None
             "events": tracker.recent(limit=limit),
         }
         return JSONResponse(payload)
+
+    register_genome_routes(mcp, service)
