@@ -1298,7 +1298,8 @@
 
             const params = new URLSearchParams(window.location.search);
             if (params.get('live') === '1') {
-                const liveWs = new WebSocket('ws://' + window.location.hostname + ':8765');
+                const wsPort = params.get('ws') || '8765';
+                const liveWs = new WebSocket('ws://' + window.location.hostname + ':' + wsPort);
                 liveWs.onmessage = (event) => {
                     try {
                         const payload = JSON.parse(event.data);

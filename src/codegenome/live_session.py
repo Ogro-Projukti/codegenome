@@ -172,10 +172,34 @@ class LiveSession:
         self._httpd: ThreadingTCPServer | None = None
         self._http_thread: threading.Thread | None = None
         self._observer = None
+        self._http_port = config.http_port
+        self._ws_port = config.ws_port
 
     @property
     def bind_host(self) -> str:
         return "0.0.0.0" if self._config.lan else "127.0.0.1"
+
+    def resolve_ports(self) -> None:
+        """Pick free HTTP/WS ports, scanning upward from the configured ones.
+
+        Avoids ``WinError 10048`` (and its POSIX equivalent) when a previous
+        ``codegenome evolve`` process is still holding the default ports.
+        """
+        from codegenome.network_utils import find_free_port
+
+        self._http_port = find_free_port(self._config.http_port, self.bind_host)
+        if self._http_port != self._config.http_port:
+            self._emit(
+                f"Port {self._config.http_port} is in use; "
+                f"serving HTTP on {self._http_port} instead."
+            )
+        if self._config.live:
+            self._ws_port = find_free_port(self._config.ws_port, self.bind_host)
+            if self._ws_port != self._config.ws_port:
+                self._emit(
+                    f"Port {self._config.ws_port} is in use; "
+                    f"using WebSocket port {self._ws_port} instead."
+                )
 
     def build_initial(self) -> None:
         """Run the initial full build before serving."""
@@ -191,18 +215,18 @@ class LiveSession:
         from codegenome.network_utils import get_lan_ip
 
         self._live_server = LiveGraphServer(
-            host=self.bind_host, port=self._config.ws_port
+            host=self.bind_host, port=self._ws_port
         )
         self._live_server.start_background()
         if self._config.lan:
             lan_ip = get_lan_ip()
             self._emit(
-                f"WebSocket server listening on ws://0.0.0.0:{self._config.ws_port}"
+                f"WebSocket server listening on ws://0.0.0.0:{self._ws_port}"
             )
-            self._emit(f"  LAN clients connect to ws://{lan_ip}:{self._config.ws_port}")
+            self._emit(f"  LAN clients connect to ws://{lan_ip}:{self._ws_port}")
         else:
             self._emit(
-                f"WebSocket server initialized on ws://127.0.0.1:{self._config.ws_port}"
+                f"WebSocket server initialized on ws://127.0.0.1:{self._ws_port}"
             )
         return self._live_server
 
@@ -211,7 +235,8 @@ class LiveSession:
         handler = build_ai_request_handler(self.engine)
         lan = self._config.lan
         listen_host = self.bind_host if lan else ""
-        self._httpd = ThreadingTCPServer((listen_host, self._config.http_port), handler)
+        ThreadingTCPServer.allow_reuse_address = True
+        self._httpd = ThreadingTCPServer((listen_host, self._http_port), handler)
 
         def _serve() -> None:
             assert self._httpd is not None
@@ -225,8 +250,8 @@ class LiveSession:
         """Announce URLs and open the local live graph viewer."""
         from codegenome.network_utils import get_lan_ip
 
-        http_port = self._config.http_port
-        live_query = "?live=1"
+        http_port = self._http_port
+        live_query = f"?live=1&ws={self._ws_port}"
         local_url = f"http://localhost:{http_port}/graph.html{live_query}"
         if self._config.lan:
             lan_ip = get_lan_ip()
@@ -254,10 +279,16 @@ class LiveSession:
     def serve(self) -> None:
         """Run the full live session until interrupted, then clean up."""
         self.build_initial()
-        self.start_live_server()
-        self.start_http_server()
-        self.open_browser()
-        self.start_watch()
+        try:
+            self.resolve_ports()
+            self.start_live_server()
+            self.start_http_server()
+            self.open_browser()
+            self.start_watch()
+        except OSError as exc:
+            self._emit(f"Failed to start live session: {exc}")
+            self.stop()
+            return
 
         try:
             while True:
