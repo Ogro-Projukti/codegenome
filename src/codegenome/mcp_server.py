@@ -589,6 +589,18 @@ def create_server(
 
     @mcp.tool
     @guarded_tool
+    def get_betweenness_centrality(
+        limit: int = 25,
+        include_generated: bool = False,
+    ) -> dict[str, Any]:
+        """Return file nodes ranked by betweenness centrality."""
+        return service.store.get_betweenness_centrality(
+            limit=limit,
+            include_generated=include_generated,
+        )
+
+    @mcp.tool
+    @guarded_tool
     def get_complexity(
         limit: int = 25,
         include_generated: bool = False,

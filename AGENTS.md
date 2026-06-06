@@ -14,8 +14,8 @@ You are operating within a repository analyzed by CodeGenome, an architectural k
 
 - **Discovery**: `search_nodes` (find symbols)
 - **Relationships**: `get_neighbors` (imports, callers, callees)
-- **Architecture**: `get_entry_points`, `get_dead_code`, `get_circular_deps`, `get_god_nodes`
-- **Metrics**: `get_complexity`, `get_churn`, `get_graph` (summary statistics)
+- **Architecture**: `get_entry_points`, `get_dead_code`, `get_circular_deps`, `get_god_nodes` (class scoring uses CBO/LCOM)
+- **Metrics**: `get_complexity`, `get_coupling_metrics` (CBO/LCOM), `get_churn`, `get_graph` (summary statistics)
 - **Evolution**: `get_timeline`, `get_changes` (architectural diffs)
 
 ## Constraints & Behaviors

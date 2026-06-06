@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from codegenome.graph_api import Graph, create_graph
+from codegenome.clusterer import GraphClusterer
 from codegenome.intelligence import GraphIntelligence
 from codegenome.timeline import GraphTimeline, NodeHistoryEntry, SnapshotInfo
 
@@ -453,6 +454,39 @@ class GraphStore:
             ],
             "tightly_coupled_classes": [
                 {"node_id": node_id, "cbo": score} for node_id, score in tightly_coupled
+            ],
+            "limit": limit,
+        }
+
+    def get_betweenness_centrality(
+        self,
+        *,
+        limit: int = 25,
+        include_generated: bool = False,
+    ) -> dict[str, Any]:
+        """Return file nodes ranked by betweenness centrality.
+
+        Args:
+            limit (int): Maximum number of nodes to return. Defaults to 25.
+            include_generated (bool): Include vendor/generated paths when True.
+
+        Returns:
+            dict[str, Any]: Ranked betweenness scores for architectural choke points.
+        """
+        if limit <= 0:
+            raise ValueError("limit must be a positive integer")
+
+        if self._graph is None:
+            raise GraphStoreError("Graph is not loaded")
+
+        rankings = GraphClusterer().betweenness_rankings(
+            self._graph,
+            include_generated=include_generated,
+        )[:limit]
+        return {
+            "rankings": [
+                {"node_id": node_id, "betweenness_centrality": score}
+                for node_id, score in rankings
             ],
             "limit": limit,
         }

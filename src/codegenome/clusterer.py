@@ -7,6 +7,7 @@ from typing import Any
 
 import igraph as ig
 import leidenalg
+import networkx as nx
 
 from codegenome.builder import file_node_id
 from codegenome.graph_api import Graph, create_graph
@@ -19,10 +20,12 @@ class ClusterResult:
     Attributes:
         communities (dict[str, int]): Mapping of node IDs to community IDs.
         bridge_nodes (list[str]): List of node IDs identified as bridge nodes.
+        betweenness_centrality (dict[str, float]): Normalized betweenness scores per file node.
     """
 
     communities: dict[str, int] = field(default_factory=dict)
     bridge_nodes: list[str] = field(default_factory=list)
+    betweenness_centrality: dict[str, float] = field(default_factory=dict)
 
 
 class GraphClusterer:
@@ -55,7 +58,11 @@ class GraphClusterer:
 
         if clustering_graph.number_of_nodes() == 1:
             node = next(iter(node for node, _ in clustering_graph.iter_nodes()))
-            return ClusterResult(communities={node: 0}, bridge_nodes=[])
+            return ClusterResult(
+                communities={node: 0},
+                bridge_nodes=[],
+                betweenness_centrality={node: 0.0},
+            )
 
         try:
             ig_graph = clustering_graph.to_igraph()
@@ -70,7 +77,12 @@ class GraphClusterer:
 
         if undirected.ecount() == 0:
             communities = {v["name"]: idx for idx, v in enumerate(undirected.vs)}
-            return ClusterResult(communities=communities, bridge_nodes=[])
+            betweenness = {node_id: 0.0 for node_id in communities}
+            return ClusterResult(
+                communities=communities,
+                bridge_nodes=[],
+                betweenness_centrality=betweenness,
+            )
 
         partition = leidenalg.find_partition(
             undirected,
@@ -86,7 +98,12 @@ class GraphClusterer:
             for index in range(len(node_names))
         }
         bridge_nodes = self.detect_bridge_nodes(clustering_graph, communities)
-        return ClusterResult(communities=communities, bridge_nodes=bridge_nodes)
+        betweenness = self.compute_betweenness_centrality(clustering_graph)
+        return ClusterResult(
+            communities=communities,
+            bridge_nodes=bridge_nodes,
+            betweenness_centrality=betweenness,
+        )
 
     def annotate(self, graph: Graph) -> Graph:
         """Annotate the graph nodes with their community IDs and bridge status.
@@ -100,9 +117,11 @@ class GraphClusterer:
         result = self.cluster(graph)
         file_communities = dict(result.communities)
         bridge_set = set(result.bridge_nodes)
+        betweenness = dict(result.betweenness_centrality)
 
         for node, attrs in graph.iter_nodes():
             community_id: int | None = None
+            betweenness_score: float | None = None
             if node in file_communities:
                 community_id = file_communities[node]
             else:
@@ -111,9 +130,18 @@ class GraphClusterer:
                     file_id = file_node_id(str(file_path))
                     community_id = file_communities.get(file_id)
 
+            if node in betweenness:
+                betweenness_score = betweenness[node]
+            else:
+                file_path = attrs.get("file_path")
+                if file_path:
+                    betweenness_score = betweenness.get(file_node_id(str(file_path)))
+
             if community_id is not None:
                 graph.set_node_attr(node, "community_id", community_id)
             graph.set_node_attr(node, "is_bridge", node in bridge_set)
+            if betweenness_score is not None:
+                graph.set_node_attr(node, "betweenness_centrality", betweenness_score)
 
         return graph
 
@@ -147,6 +175,94 @@ class GraphClusterer:
             if neighbor_communities:
                 bridges.append(node)
         return sorted(bridges)
+
+    def compute_betweenness_centrality(self, graph: Graph) -> dict[str, float]:
+        """Compute normalized betweenness centrality on the file-level clustering graph.
+
+        High scores highlight nodes that lie on many shortest paths between other
+        files, complementing community-based bridge detection.
+
+        Args:
+            graph (Graph): The file-level graph used for community detection.
+
+        Returns:
+            dict[str, float]: Mapping of file node IDs to normalized betweenness scores.
+        """
+        if graph.number_of_nodes() == 0:
+            return {}
+
+        undirected = graph.to_networkx().to_undirected()
+        if undirected.number_of_nodes() == 0:
+            return {}
+
+        if undirected.number_of_edges() == 0:
+            return {str(node): 0.0 for node in undirected.nodes()}
+
+        return {
+            str(node): float(score)
+            for node, score in nx.betweenness_centrality(undirected, normalized=True).items()
+        }
+
+    def betweenness_rankings(
+        self,
+        graph: Graph,
+        *,
+        include_generated: bool = False,
+    ) -> list[tuple[str, float]]:
+        """Rank file nodes by descending betweenness centrality."""
+        clustering_graph = self._clustering_graph(graph)
+        scores = self.compute_betweenness_centrality(clustering_graph)
+        ranked = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+        if include_generated:
+            return ranked
+
+        filtered: list[tuple[str, float]] = []
+        for node_id, score in ranked:
+            attrs = graph.get_node(node_id) if graph.has_node(node_id) else {}
+            if self._is_generated_or_vendor(attrs):
+                continue
+            filtered.append((node_id, score))
+        return filtered
+
+    @staticmethod
+    def _is_generated_or_vendor(attrs: dict[str, object]) -> bool:
+        path = str(attrs.get("file_path") or attrs.get("absolute_path") or "")
+        if not path:
+            return False
+
+        normalized = path.replace("\\", "/").casefold()
+        parts = {part for part in normalized.split("/") if part}
+        generated_parts = {
+            ".cache",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+            ".tox",
+            ".venv",
+            "build",
+            "coverage",
+            "dist",
+            "node_modules",
+            "site-packages",
+            "vendor",
+            "vendors",
+            "venv",
+        }
+        if parts & generated_parts:
+            return True
+
+        name = normalized.rsplit("/", 1)[-1]
+        return name.endswith(
+            (
+                ".bundle.css",
+                ".bundle.js",
+                ".generated.css",
+                ".generated.js",
+                ".map",
+                ".min.css",
+                ".min.js",
+            )
+        )
 
     def _clustering_graph(self, graph: Graph) -> Graph:
         module_index = self._module_to_file_index(graph)

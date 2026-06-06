@@ -165,3 +165,90 @@ def test_clusterer_annotate_adds_labels() -> None:
     for attrs in file_nodes:
         assert "community_id" in attrs
         assert "is_bridge" in attrs
+        assert "betweenness_centrality" in attrs
+
+
+def test_clusterer_ranks_bridge_node_by_betweenness() -> None:
+    left_a = ParseResult(path="left/a.py", language="python")
+    left_a.symbols = [
+        ParsedSymbol(
+            name="work",
+            kind="function",
+            start_line=1,
+            end_line=2,
+            qualified_name="work",
+        )
+    ]
+    left_b = ParseResult(path="left/b.py", language="python")
+    left_b.symbols = [
+        ParsedSymbol(
+            name="run",
+            kind="function",
+            start_line=1,
+            end_line=2,
+            qualified_name="run",
+        )
+    ]
+    left_b.calls = [ParsedCall(caller="run", callee="work", line=2)]
+    left_b.imports = [ParsedImport(module="left.a", names=["work"], start_line=1)]
+
+    right_a = ParseResult(path="right/a.py", language="python")
+    right_a.symbols = [
+        ParsedSymbol(
+            name="work",
+            kind="function",
+            start_line=1,
+            end_line=2,
+            qualified_name="work",
+        )
+    ]
+    right_b = ParseResult(path="right/b.py", language="python")
+    right_b.symbols = [
+        ParsedSymbol(
+            name="run",
+            kind="function",
+            start_line=1,
+            end_line=2,
+            qualified_name="run",
+        )
+    ]
+    right_b.calls = [ParsedCall(caller="run", callee="work", line=2)]
+    right_b.imports = [ParsedImport(module="right.a", names=["work"], start_line=1)]
+
+    bridge = ParseResult(path="bridge.py", language="python")
+    bridge.symbols = [
+        ParsedSymbol(
+            name="connect",
+            kind="function",
+            start_line=1,
+            end_line=2,
+            qualified_name="connect",
+        )
+    ]
+    bridge.imports = [
+        ParsedImport(module="left.b", names=["run"], start_line=1),
+        ParsedImport(module="right.b", names=["run"], start_line=2),
+    ]
+    bridge.calls = [
+        ParsedCall(caller="connect", callee="run", line=2),
+    ]
+
+    graph = _build_graph(
+        {
+            "left/a.py": left_a,
+            "left/b.py": left_b,
+            "right/a.py": right_a,
+            "right/b.py": right_b,
+            "bridge.py": bridge,
+        }
+    )
+    clusterer = GraphClusterer()
+    result = clusterer.cluster(graph)
+    bridge_id = file_node_id("bridge.py")
+
+    assert bridge_id in result.betweenness_centrality
+    assert result.betweenness_centrality[bridge_id] > 0.0
+    assert result.betweenness_centrality[bridge_id] == max(result.betweenness_centrality.values())
+
+    annotated = clusterer.annotate(graph.copy())
+    assert annotated.get_node(bridge_id).get("betweenness_centrality") == result.betweenness_centrality[bridge_id]
