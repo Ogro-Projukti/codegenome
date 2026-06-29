@@ -86,13 +86,55 @@ def load_template(template_name: str) -> str:
 
 def write_rule(path: Path, content: str) -> None:
     """Write rule content to the given path, creating parent directories if needed.
+    
+    If the file already exists, appends the content with section markers to preserve
+    existing user content. If a CodeGenome section already exists, it will be replaced.
 
     Args:
         path (Path): The destination file path.
         content (str): The text content to write.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    
+    # Section markers to identify CodeGenome-managed content
+    BEGIN_MARKER = "<!-- BEGIN CODEGENOME MCP INTEGRATION -->"
+    END_MARKER = "<!-- END CODEGENOME MCP INTEGRATION -->"
+    
+    # Wrap content with markers
+    wrapped_content = f"{BEGIN_MARKER}\n{content}\n{END_MARKER}\n"
+    
+    if not path.exists():
+        # File doesn't exist - create it with wrapped content
+        path.write_text(wrapped_content, encoding="utf-8")
+        return
+    
+    # File exists - read current content
+    try:
+        existing_content = path.read_text(encoding="utf-8")
+    except Exception:
+        # If we can't read it, backup and overwrite
+        backup_path = path.with_suffix(path.suffix + ".backup")
+        path.rename(backup_path)
+        path.write_text(wrapped_content, encoding="utf-8")
+        return
+    
+    # Check if CodeGenome section already exists
+    if BEGIN_MARKER in existing_content and END_MARKER in existing_content:
+        # Replace existing section
+        start_idx = existing_content.find(BEGIN_MARKER)
+        end_idx = existing_content.find(END_MARKER) + len(END_MARKER)
+        
+        # Preserve content before and after the section
+        before = existing_content[:start_idx]
+        after = existing_content[end_idx:]
+        
+        new_content = before + wrapped_content + after
+        path.write_text(new_content, encoding="utf-8")
+    else:
+        # No existing section - append with separator
+        separator = "\n\n" if existing_content.strip() else ""
+        new_content = existing_content + separator + wrapped_content
+        path.write_text(new_content, encoding="utf-8")
 
 
 def generate_rules_for_target(
