@@ -4,9 +4,11 @@ Audit date: 2026-07-20
 
 Baseline: `689a01f`
 
-Audit branch: `critical-update` (working tree based on `8e513b3`)
+Audit branch: `critical-update`
 
-Release decision: **provisional pass on Windows; Linux and macOS CI evidence pending**
+Verified commit: `78add3c208a692e041c410e2baaf5079f2c3e4d6`
+
+Release decision: **PASS - SEC-01, BUG-02, BUG-03, and SEC-02 are retired.**
 
 This ledger records executed evidence. A platform is never marked passing from source
 inspection alone. The historical fallback snapshot's metadata target is **10,507 edges**;
@@ -19,13 +21,13 @@ back to a historical graph size.
 
 | Gate | Required invariant | Windows 11 | Ubuntu CI | macOS CI | Disposition |
 |---|---|---:|---:|---:|---|
-| SEC-01 network boundary | Defaults bind `127.0.0.1`; unauthenticated secondary-interface `POST /ai/chat` is refused or returns 401 | PASS | Pending | Pending | Await matrix |
-| BUG-02 multiedge persistence | Two byte-identical edges produce two rows and reload as two edges | PASS | Pending | Pending | Await matrix |
-| BUG-03 managed rules | Manual text survives and generated block updates in place | PASS | Pending | Pending | Await matrix |
-| SEC-02 supply chain | Clean `pip install .`; `pip-audit` finds zero known vulnerabilities | PASS | Pending | N/A (audit job runs on Ubuntu) | Await CI audit |
-| Full suite and async integrity | Every discovered test passes, including `test_live_server.py` async tests | 221/221 PASS | Pending | Pending | Await matrix |
-| Blocking lint | `python -m ruff check src tests` exits zero | PASS | Pending | N/A (quality job runs on Ubuntu) | Await CI quality |
-| Doctor | Loopback defaults, SQLite health/schema/count, and duplicate-edge probe pass | PASS | CLI smoke pending | CLI smoke pending | Await matrix |
+| SEC-01 network boundary | Defaults bind `127.0.0.1`; unauthenticated secondary-interface `POST /ai/chat` is refused or returns 401 | PASS | PASS (2/2) | PASS (2/2) | RETIRED |
+| BUG-02 multiedge persistence | Two byte-identical edges produce two rows and reload as two edges | PASS | PASS (2/2) | PASS (2/2) | RETIRED |
+| BUG-03 managed rules | Manual text survives and generated block updates in place | PASS | PASS (2/2) | PASS (2/2) | RETIRED |
+| SEC-02 supply chain | Clean `pip install .`; `pip-audit` finds zero known vulnerabilities | PASS | PASS | PASS | RETIRED |
+| Full suite and async integrity | Every discovered test passes, including `test_live_server.py` async tests | 221/221 PASS (local + 2/2 CI) | 221/221 PASS (2/2) | 221/221 PASS (2/2) | GREEN |
+| Blocking lint | `python -m ruff check src tests` exits zero | PASS (local) | PASS (blocking CI) | N/A (platform-independent gate) | GREEN |
+| Doctor | Loopback defaults, SQLite health/schema/count, and duplicate-edge probe pass | PASS (real 4.2 GB DB) | PASS (2/2 isolated DB tests) | PASS (2/2 isolated DB tests) | GREEN |
 
 ## Windows execution record
 
@@ -53,7 +55,7 @@ discovered 221 tests after adding the doctor and secondary-interface regressions
 | SEC-01 | A non-LAN session binds explicit loopback, never the empty-string wildcard. A LAN-interface request to the same port was refused. | Central `resolve_bind_host()` control; remote MCP requires explicit HTTP opt-in | Runtime probe plus network regression tests |
 | BUG-02 | Parallel edges, including identical attributes, receive occurrence-aware SHA-256 keys and survive full/patch persistence. | `graph_edges` primary key is `(snapshot_id, source_id, target_id, edge_key)` | Two-edge probe, three-edge regression, schema migration test, and real row-count parity |
 | BUG-03 | Generated rules occupy one marker-delimited managed block; manual text remains outside it. Updates are atomic and backed up. | `write_rule()`, `_render_rule()`, `_atomic_write()`, malformed-marker refusal | Two CLI generations plus idempotence, backup, malformed marker, and front-matter tests |
-| SEC-02 | Runtime requirements are declared in `pyproject.toml`; `requirements.txt` delegates to `.[dev]`; security-sensitive resolutions live in `constraints.txt`. Every direct dependency has an upper bound. | FastMCP 3.4.4, MCP 1.28.1, pytest 9.0.3 constraint floor/pins; clean-install CI audit | Two zero-vulnerability Windows audits; Ubuntu audit pending |
+| SEC-02 | Runtime requirements are declared in `pyproject.toml`; `requirements.txt` delegates to `.[dev]`; security-sensitive resolutions live in `constraints.txt`. Every direct dependency has an upper bound. | FastMCP 3.4.4, MCP 1.28.1, pytest 9.0.3 constraint floor/pins; clean-install CI audit | Zero-vulnerability local audit plus independent Ubuntu, macOS, and Windows CI audits |
 
 ## Architectural standards
 
@@ -68,15 +70,26 @@ discovered 221 tests after adding the doctor and secondary-interface regressions
 
 Workflow: `.github/workflows/compatibility.yml`
 
-Run: **pending first workflow-dispatch run of this audit change set**
+Final run: [29705912790](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790),
+commit `78add3c208a692e041c410e2baaf5079f2c3e4d6`, completed **success**.
 
 | Job | Required coverage | Run result |
 |---|---|---:|
-| Full tests / Ubuntu / Python 3.11 and 3.13 | Complete `pytest -q`, CLI and doctor help smoke | Pending |
-| Full tests / macOS / Python 3.11 and 3.13 | Complete `pytest -q`, CLI and doctor help smoke | Pending |
-| Full tests / Windows / Python 3.11 and 3.13 | Complete `pytest -q`, CLI and doctor help smoke | Pending |
-| Dependency vulnerability audit | Clean Ubuntu `pip install .` followed by `pip-audit` | Pending |
-| Lint, coverage, and package build | Blocking Ruff, complete coverage run, wheel/sdist validation and external wheel smoke | Pending |
+| [Ubuntu / Python 3.11](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758120) | Complete `pytest -q`, CLI and doctor help smoke | 221 passed in 6.63 s |
+| [Ubuntu / Python 3.13](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758129) | Complete `pytest -q`, CLI and doctor help smoke | 221 passed in 6.70 s |
+| [macOS arm64 / Python 3.11](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758126) | Complete `pytest -q`, CLI and doctor help smoke | 221 passed in 3.83 s |
+| [macOS arm64 / Python 3.13](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758148) | Complete `pytest -q`, CLI and doctor help smoke | 221 passed in 4.16 s |
+| [Windows / Python 3.11](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758230) | Complete `pytest -q`, CLI and doctor help smoke | 221 passed in 35.51 s |
+| [Windows / Python 3.13](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758139) | Complete `pytest -q`, CLI and doctor help smoke | 221 passed in 45.59 s |
+| [Ubuntu dependency audit](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758138) | Clean `pip install .` followed by `pip-audit` | No known vulnerabilities found |
+| [macOS dependency audit](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758134) | Clean `pip install .` followed by `pip-audit` | No known vulnerabilities found |
+| [Windows dependency audit](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758133) | Clean `pip install .` followed by `pip-audit` | No known vulnerabilities found |
+| [Lint, coverage, and package build](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705912790/job/88242758102) | Blocking Ruff, complete coverage run, wheel/sdist validation and external wheel smoke | PASS; 221 tests; 72.72% coverage; wheel and sdist metadata PASS |
+
+The discovery run [29705507787](https://github.com/Ogro-Projukti/codegenome/actions/runs/29705507787)
+correctly blocked release because the obsolete `tree-sitter-python==0.21.0` marker had no
+macOS arm64/Python 3.11 distribution. Commit `ed0d213` unified Tree-sitter and grammar
+bounds at `>=0.23,<0.26`; the final run above proves the correction across every matrix leg.
 
 ## Architect's note to the engineer
 
