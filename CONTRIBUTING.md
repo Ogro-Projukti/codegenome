@@ -64,7 +64,7 @@ source .venv/bin/activate
 Install the package in editable mode with development dependencies:
 
 ```bash
-pip install -e ".[dev]"
+pip install -r requirements.txt
 ```
 
 Verify the install:

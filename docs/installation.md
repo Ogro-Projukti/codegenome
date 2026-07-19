@@ -44,14 +44,14 @@ python -m venv .venv
 
 # Windows PowerShell
 .venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+pip install -r requirements.txt
 
 # macOS / Linux
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -r requirements.txt
 ```
 
-Verify the same way as above. For contribution workflow, tests, and linting, see [CONTRIBUTING.md](../CONTRIBUTING.md).
+`pyproject.toml` is the dependency source of truth; `requirements.txt` installs its development extra under the security-tested pins in `constraints.txt`. Verify the same way as above. For contribution workflow, tests, and linting, see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## First graph build
 

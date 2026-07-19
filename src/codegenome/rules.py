@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,6 +12,14 @@ try:
     from importlib.resources import files
 except ImportError:
     from importlib_resources import files  # type: ignore
+
+
+MANAGED_SECTION_START = "<!-- BEGIN CODEGENOME MANAGED RULES -->"
+MANAGED_SECTION_END = "<!-- END CODEGENOME MANAGED RULES -->"
+
+
+class RuleMergeError(ValueError):
+    """Raised when an existing managed section cannot be updated safely."""
 
 
 @dataclass(frozen=True)
@@ -85,14 +96,91 @@ def load_template(template_name: str) -> str:
 
 
 def write_rule(path: Path, content: str) -> None:
-    """Write rule content to the given path, creating parent directories if needed.
+    """Merge generated rules into a managed section and write atomically.
 
     Args:
         path (Path): The destination file path.
         content (str): The text content to write.
+
+    Raises:
+        RuleMergeError: If existing managed markers are incomplete or ambiguous.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    existing = path.read_text(encoding="utf-8") if path.exists() else None
+    updated = _render_rule(existing, content)
+    if existing == updated:
+        return
+
+    if existing is not None:
+        _atomic_write(backup_path_for(path), existing)
+    _atomic_write(path, updated)
+
+
+def backup_path_for(path: Path) -> Path:
+    """Return the single-file recovery backup used before managed updates."""
+    return path.with_name(f"{path.name}.codegenome.bak")
+
+
+def _render_rule(existing: str | None, content: str) -> str:
+    prefix, managed_content = _split_front_matter(content)
+    managed_block = (
+        f"{MANAGED_SECTION_START}\n"
+        f"{managed_content.strip()}\n"
+        f"{MANAGED_SECTION_END}"
+    )
+
+    if existing is None or existing.rstrip() == content.rstrip():
+        prefix_block = f"{prefix.rstrip()}\n\n" if prefix else ""
+        return f"{prefix_block}{managed_block}\n"
+
+    start_count = existing.count(MANAGED_SECTION_START)
+    end_count = existing.count(MANAGED_SECTION_END)
+    if start_count == 0 and end_count == 0:
+        separator = "\n\n" if existing.strip() else ""
+        return f"{existing.rstrip()}{separator}{managed_block}\n"
+    if start_count != 1 or end_count != 1:
+        raise RuleMergeError(
+            f"Refusing to update {start_count} start marker(s) and "
+            f"{end_count} end marker(s); repair the managed section first."
+        )
+
+    start = existing.index(MANAGED_SECTION_START)
+    end = existing.index(MANAGED_SECTION_END)
+    if end < start:
+        raise RuleMergeError("Managed section end marker appears before its start marker.")
+    end += len(MANAGED_SECTION_END)
+    return f"{existing[:start]}{managed_block}{existing[end:]}"
+
+
+def _split_front_matter(content: str) -> tuple[str, str]:
+    """Keep MDC front matter valid while managing its Markdown body."""
+    lines = content.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return "", content
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return "".join(lines[: index + 1]), "".join(lines[index + 1 :])
+    return "", content
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Replace a text file from a same-directory temporary file."""
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if path.exists():
+            shutil.copymode(path, temporary_path)
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def generate_rules_for_target(

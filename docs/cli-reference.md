@@ -64,7 +64,7 @@ codegenome evolve --live --lan .
 
 With `--live`, a WebSocket server broadcasts graph updates. The UI is served at `http://localhost:8000/graph.html?live=1`.
 
-With `--lan`, HTTP and WebSocket bind to all interfaces (`0.0.0.0`) so other devices on the same network can open the graph. The CLI prints a shareable LAN URL (for example `http://192.168.1.42:8000/graph.html?live=1`). Use `--live --lan` together for real-time updates on remote viewers.
+Without `--lan`, HTTP and WebSocket bind explicitly to loopback (`127.0.0.1`). With `--lan`, they bind to all interfaces (`0.0.0.0`) so other devices on the same network can open the graph. The CLI prints a security warning and a shareable LAN URL (for example `http://192.168.1.42:8000/graph.html?live=1`). Live graph and AI routes do not authenticate clients, so use `--lan` only on a trusted network. Use `--live --lan` together for real-time updates on remote viewers.
 
 ### `mcp-start`
 
@@ -87,6 +87,8 @@ codegenome rules --dry-run .
 ```
 
 Clients: `cursor`, `copilot`, `windsurf`, `agents`, or `all` (default when omitted).
+
+Generated content is confined to a CodeGenome-managed section. Existing user-authored instructions outside that section are preserved, and an existing file is backed up to `<filename>.codegenome.bak` before an atomic update.
 
 ### `tui`
 

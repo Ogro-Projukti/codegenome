@@ -265,11 +265,14 @@ class LiveSession:
 
     def start_http_server(self) -> None:
         """Start the static + AI-chat HTTP server in a daemon thread."""
+        if self._config.lan:
+            self._emit(
+                "SECURITY WARNING: --lan exposes unauthenticated graph and AI routes "
+                "to the local network; use it only on a trusted network."
+            )
         handler = build_ai_request_handler(self.engine)
-        lan = self._config.lan
-        listen_host = self.bind_host if lan else ""
         ThreadingTCPServer.allow_reuse_address = True
-        self._httpd = ThreadingTCPServer((listen_host, self._http_port), handler)
+        self._httpd = ThreadingTCPServer((self.bind_host, self._http_port), handler)
 
         def _serve() -> None:
             assert self._httpd is not None

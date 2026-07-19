@@ -1,0 +1,5 @@
+# Security-sensitive resolution tested for this release phase (2026-07-20).
+# Update these pins together after compatibility tests and a fresh vulnerability audit.
+fastmcp==3.4.4
+mcp==1.28.1
+pytest==9.0.3

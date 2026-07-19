@@ -38,7 +38,7 @@ class SnapshotExporter:
             SELECT source_id, target_id, attrs_json
             FROM graph_edges
             WHERE snapshot_id = ?
-            ORDER BY source_id, target_id
+            ORDER BY source_id, target_id, edge_key
             """,
             (snapshot_id,),
         ).fetchall()

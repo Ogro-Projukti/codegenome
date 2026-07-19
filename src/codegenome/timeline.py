@@ -7,6 +7,7 @@ structural diffing (deltas) between points in time.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import time
@@ -21,6 +22,9 @@ from codegenome.snapshot_metrics import SnapshotMetricsStore
 from codegenome.graph_api import Graph, create_graph
 from codegenome.graph_loader import node_file_path
 from codegenome.intelligence import IntelligenceReport
+
+
+EdgeIdentity = tuple[str, str, str]
 
 
 @dataclass(frozen=True)
@@ -160,20 +164,18 @@ class GraphTimeline:
                 node_rows,
             )
 
-        edge_rows_dict = {}
-        for source, target, edge_attrs in graph.iter_edges():
-            edge_rows_dict[(source, target)] = (
-                snapshot_id,
-                source,
-                target,
-                json.dumps(edge_attrs, sort_keys=True),
+        edge_rows = [
+            (snapshot_id, source, target, edge_key, attrs_json)
+            for (source, target, edge_key), attrs_json in sorted(
+                self._edge_map_for_graph(graph).items()
             )
-        edge_rows = list(edge_rows_dict.values())
+        ]
         if edge_rows:
             self._conn.executemany(
                 """
-                INSERT INTO graph_edges (snapshot_id, source_id, target_id, attrs_json)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO graph_edges
+                    (snapshot_id, source_id, target_id, edge_key, attrs_json)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 edge_rows,
             )
@@ -204,6 +206,7 @@ class GraphTimeline:
             SELECT source_id, target_id, attrs_json
             FROM graph_edges
             WHERE snapshot_id = ?
+            ORDER BY source_id, target_id, edge_key
             """,
             (snapshot_id,),
         ).fetchall()
@@ -284,7 +287,7 @@ class GraphTimeline:
 
         frontier = {seed_node_id}
         visited: set[str] = set()
-        edges: list[tuple[str, str, str]] = []
+        edges: dict[EdgeIdentity, str] = {}
 
         for _ in range(depth):
             if not frontier or len(visited) >= max_nodes:
@@ -297,7 +300,7 @@ class GraphTimeline:
             placeholders = ", ".join("?" for _ in batch)
             rows = self._conn.execute(
                 f"""
-                SELECT source_id, target_id, attrs_json
+                SELECT source_id, target_id, edge_key, attrs_json
                 FROM graph_edges
                 WHERE snapshot_id = ?
                   AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
@@ -309,7 +312,7 @@ class GraphTimeline:
             for row in rows:
                 source = row["source_id"]
                 target = row["target_id"]
-                edges.append((source, target, row["attrs_json"]))
+                edges[(source, target, row["edge_key"])] = row["attrs_json"]
                 if source in batch:
                     next_frontier.add(target)
                 if target in batch:
@@ -323,15 +326,11 @@ class GraphTimeline:
             visited.add(seed_node_id)
 
         node_ids_to_load = set(visited)
-        seen_edges: set[tuple[str, str]] = set()
-        for source, target, attrs_json in edges:
+        for source, target, _edge_key in edges:
             if source not in visited and target not in visited:
                 continue
             node_ids_to_load.add(source)
             node_ids_to_load.add(target)
-            key = (source, target)
-            if key not in seen_edges:
-                seen_edges.add(key)
 
         placeholders = ", ".join("?" for _ in node_ids_to_load)
         node_rows = self._conn.execute(
@@ -345,10 +344,9 @@ class GraphTimeline:
         for row in node_rows:
             graph.add_node(row["node_id"], **json.loads(row["attrs_json"]))
 
-        for source, target, attrs_json in edges:
-            if (source, target) in seen_edges:
-                if graph.has_node(source) and graph.has_node(target):
-                    graph.add_edge(source, target, **json.loads(attrs_json))
+        for (source, target, _edge_key), attrs_json in edges.items():
+            if graph.has_node(source) and graph.has_node(target):
+                graph.add_edge(source, target, **json.loads(attrs_json))
         return graph
 
     def record_snapshot_patch(
@@ -413,13 +411,14 @@ class GraphTimeline:
 
         if edge_items:
             edge_rows = [
-                (snapshot_id, source, target, json.dumps(attrs, sort_keys=True))
-                for (source, target), attrs in sorted(edge_items)
+                (snapshot_id, source, target, edge_key, attrs_json)
+                for (source, target, edge_key), attrs_json in sorted(edge_items)
             ]
             self._conn.executemany(
                 """
-                INSERT INTO graph_edges (snapshot_id, source_id, target_id, attrs_json)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO graph_edges
+                    (snapshot_id, source_id, target_id, edge_key, attrs_json)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 edge_rows,
             )
@@ -553,7 +552,7 @@ class GraphTimeline:
             SELECT source_id, target_id, attrs_json
             FROM graph_edges
             WHERE snapshot_id = ?
-            ORDER BY source_id, target_id
+            ORDER BY source_id, target_id, edge_key
         """
         params: list[Any] = [snapshot_id]
         if limit is not None:
@@ -695,8 +694,10 @@ class GraphTimeline:
             if from_nodes[node] != to_nodes[node]
         )
 
-        added_edges = sorted(to_edges - from_edges)
-        removed_edges = sorted(from_edges - to_edges)
+        added_edges = [(source, target) for source, target, _ in sorted(to_edges - from_edges)]
+        removed_edges = [
+            (source, target) for source, target, _ in sorted(from_edges - to_edges)
+        ]
 
         return GraphDelta(
             snapshot_from=snapshot_from,
@@ -822,8 +823,9 @@ class GraphTimeline:
                 snapshot_id INTEGER NOT NULL,
                 source_id TEXT NOT NULL,
                 target_id TEXT NOT NULL,
+                edge_key TEXT NOT NULL,
                 attrs_json TEXT NOT NULL,
-                PRIMARY KEY (snapshot_id, source_id, target_id),
+                PRIMARY KEY (snapshot_id, source_id, target_id, edge_key),
                 FOREIGN KEY (snapshot_id) REFERENCES snapshots(snapshot_id)
             );
 
@@ -839,7 +841,76 @@ class GraphTimeline:
                 ON graph_node_files (snapshot_id, file_path);
             """
         )
+        self._migrate_graph_edges_schema()
+        self._conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_graph_edges_target
+            ON graph_edges (snapshot_id, target_id)
+            """
+        )
         self._conn.commit()
+
+    def _migrate_graph_edges_schema(self) -> None:
+        """Upgrade endpoint-only edge rows to stable multigraph identities."""
+        columns = self._conn.execute("PRAGMA table_info(graph_edges)").fetchall()
+        primary_key = [
+            row["name"]
+            for row in sorted((row for row in columns if row["pk"]), key=lambda row: row["pk"])
+        ]
+        if primary_key == ["snapshot_id", "source_id", "target_id", "edge_key"]:
+            return
+
+        self._conn.create_function(
+            "codegenome_edge_key",
+            1,
+            lambda attrs_json: self._edge_key(str(attrs_json), 0),
+            deterministic=True,
+        )
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+            self._conn.execute("ALTER TABLE graph_edges RENAME TO graph_edges_legacy")
+            self._conn.execute(
+                """
+                CREATE TABLE graph_edges (
+                    snapshot_id INTEGER NOT NULL,
+                    source_id TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    edge_key TEXT NOT NULL,
+                    attrs_json TEXT NOT NULL,
+                    PRIMARY KEY (snapshot_id, source_id, target_id, edge_key),
+                    FOREIGN KEY (snapshot_id) REFERENCES snapshots(snapshot_id)
+                )
+                """
+            )
+            self._conn.execute(
+                """
+                INSERT INTO graph_edges
+                    (snapshot_id, source_id, target_id, edge_key, attrs_json)
+                SELECT snapshot_id,
+                       source_id,
+                       target_id,
+                       codegenome_edge_key(attrs_json),
+                       attrs_json
+                FROM graph_edges_legacy
+                """
+            )
+            self._conn.execute("DROP TABLE graph_edges_legacy")
+            self._conn.execute(
+                """
+                UPDATE snapshots
+                SET edge_count = (
+                    SELECT COUNT(*)
+                    FROM graph_edges
+                    WHERE graph_edges.snapshot_id = snapshots.snapshot_id
+                )
+                """
+            )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        finally:
+            self._conn.create_function("codegenome_edge_key", 1, None)
 
     def _index_graph_node_files(self, snapshot_id: int, graph: Graph) -> None:
         rows: list[tuple[int, str, str]] = []
@@ -959,13 +1030,13 @@ class GraphTimeline:
         self,
         snapshot_id: int,
         node_ids: set[str],
-    ) -> dict[tuple[str, str], dict[str, Any]]:
+    ) -> dict[EdgeIdentity, str]:
         if not node_ids:
             return {}
         placeholders = ", ".join("?" for _ in node_ids)
         rows = self._conn.execute(
             f"""
-            SELECT source_id, target_id, attrs_json
+            SELECT source_id, target_id, edge_key, attrs_json
             FROM graph_edges
             WHERE snapshot_id = ?
               AND source_id IN ({placeholders})
@@ -974,30 +1045,53 @@ class GraphTimeline:
             (snapshot_id, *sorted(node_ids), *sorted(node_ids)),
         ).fetchall()
         return {
-            (row["source_id"], row["target_id"]): json.loads(row["attrs_json"])
+            (row["source_id"], row["target_id"], row["edge_key"]): row["attrs_json"]
             for row in rows
         }
 
-    @staticmethod
+    @classmethod
     def _edges_for_node_ids_in_fragment(
+        cls,
         fragment: Graph,
         node_ids: set[str],
-    ) -> dict[tuple[str, str], dict[str, Any]]:
-        allowed = set(node_ids)
-        return {
-            (source, target): dict(attrs)
-            for source, target, attrs in fragment.iter_edges()
-            if source in allowed and target in allowed
-        }
+    ) -> dict[EdgeIdentity, str]:
+        return cls._edge_map_for_graph(fragment, node_ids=node_ids)
 
     @staticmethod
     def _merge_edge_maps(
-        *edge_maps: dict[tuple[str, str], dict[str, Any]],
-    ) -> dict[tuple[str, str], dict[str, Any]]:
-        merged: dict[tuple[str, str], dict[str, Any]] = {}
+        *edge_maps: dict[EdgeIdentity, str],
+    ) -> dict[EdgeIdentity, str]:
+        merged: dict[EdgeIdentity, str] = {}
         for edge_map in edge_maps:
             merged.update(edge_map)
         return merged
+
+    @classmethod
+    def _edge_map_for_graph(
+        cls,
+        graph: Graph,
+        *,
+        node_ids: set[str] | None = None,
+    ) -> dict[EdgeIdentity, str]:
+        """Return every graph edge under a deterministic multigraph identity."""
+        allowed = set(node_ids) if node_ids is not None else None
+        occurrences: dict[tuple[str, str, str], int] = {}
+        edges: dict[EdgeIdentity, str] = {}
+        for source, target, attrs in graph.iter_edges():
+            if allowed is not None and (source not in allowed or target not in allowed):
+                continue
+            attrs_json = json.dumps(attrs, sort_keys=True)
+            occurrence_identity = (source, target, attrs_json)
+            occurrence = occurrences.get(occurrence_identity, 0)
+            occurrences[occurrence_identity] = occurrence + 1
+            edge_key = cls._edge_key(attrs_json, occurrence)
+            edges[(source, target, edge_key)] = attrs_json
+        return edges
+
+    @staticmethod
+    def _edge_key(attrs_json: str, occurrence: int) -> str:
+        digest = hashlib.sha256(attrs_json.encode("utf-8")).hexdigest()
+        return f"{digest}:{occurrence}"
 
     def _node_map(self, snapshot_id: int) -> dict[str, str]:
         rows = self._conn.execute(
@@ -1006,13 +1100,16 @@ class GraphTimeline:
         ).fetchall()
         return {row["node_id"]: row["attrs_json"] for row in rows}
 
-    def _edge_set(self, snapshot_id: int) -> set[tuple[str, str]]:
+    def _edge_set(self, snapshot_id: int) -> set[EdgeIdentity]:
         rows = self._conn.execute(
             """
-            SELECT source_id, target_id
+            SELECT source_id, target_id, edge_key
             FROM graph_edges
             WHERE snapshot_id = ?
             """,
             (snapshot_id,),
         ).fetchall()
-        return {(row["source_id"], row["target_id"]) for row in rows}
+        return {
+            (row["source_id"], row["target_id"], row["edge_key"])
+            for row in rows
+        }
