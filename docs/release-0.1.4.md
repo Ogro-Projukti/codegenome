@@ -37,14 +37,14 @@ python -c "import codegenome; print(codegenome.__version__)"
 | Check | Status |
 |-------|--------|
 | Tests (`pytest`) | 99 passed |
-| Version in `pyproject.toml` and `src/codegenome/version.py` | `0.1.4` |
+| Version in `src/codegenome/version.py` (the package metadata source) | `0.1.4` |
 | Changelog updated | Yes |
 
 ## Publishing checklist
 
 - [x] Remaining features merged
 - [x] Tests pass (`pytest`)
-- [x] Version bumped in `pyproject.toml` and `src/codegenome/version.py`
+- [x] Version bumped in `src/codegenome/version.py`
 - [x] Changelog and release notes updated
 - [ ] Tag `v0.1.4` and create GitHub Release
 - [ ] Publish to PyPI

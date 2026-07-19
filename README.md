@@ -66,7 +66,7 @@ Need your graph in a different format? Codegenome seamlessly exports to:
 - **Cypher** (for Neo4j)
 - **Obsidian** (for personal knowledge bases)
 
-Use `codegenome export --format <name>` for `json`, `html`, `cypher`, and `obsidian`. Additional formats are available through the [legacy CLI](docs/cli-reference.md#legacy-cli-python--m-codegenome).
+Use `codegenome export --format <name>` for `json`, `html`, `markdown`, `graphml`, `cypher`, and `obsidian`. Repeat `--format` to export more than one format.
 
 ## 🚀 Quick Start
 
@@ -99,22 +99,25 @@ codegenome evolve --live --lan .
 **Solution:** Codegenome needs to build its initial knowledge graph database before it can be served or exported. Always run `codegenome analyze .` in your workspace first to generate the graph.
 
 ### 2. "unrecognized arguments" CLI Error
-**Symptom:** You try to run commands and receive an `unrecognized arguments` error (e.g., mixing `--workspace` flags with `export` subcommands).
-**Solution:** The unified CLI (`codegenome`) uses modern subcommands (e.g., `codegenome analyze .`, `codegenome mcp-start`, `codegenome tui`). If you are following older documentation that uses flags like `--workspace . --build`, you must invoke the Python module directly using `python -m codegenome --workspace . --build`. Avoid mixing the modular subcommands with the legacy flag-based CLI.
+**Symptom:** Older instructions use removed top-level flags such as `--workspace` or `--build`.
+**Solution:** Use the unified subcommands (`codegenome analyze .`, `codegenome mcp-start`, `codegenome timeline`, or `codegenome tui`). `python -m codegenome` exposes the same interface. See the migration table in the CLI reference.
 
 ## 📚 Documentation
 
 | Doc | Description |
 |-----|-------------|
-| 📖 [CLI reference](docs/cli-reference.md) | Subcommands, legacy flags, workflows |
+| 📖 [CLI reference](docs/cli-reference.md) | Unified commands, options, and migration table |
 | ⚙️ [Installation](docs/installation.md) | pip, venv, MCP setup |
 | 🔌 [MCP integration](docs/mcp-integration.md) | Server modes and client installer |
+| 📦 [Release guide](docs/releasing.md) | TestPyPI, PyPI Trusted Publishing, versioning |
+| ⚖️ [License compliance](docs/license-compliance.md) | GPL dependency review and release gate |
+| ✅ [Phase 2 readiness](docs/phase-2-readiness.md) | Packaging checklist and remaining owner gates |
 | 🧩 [Extensions](extensions/README.md) | Cursor rules and Copilot templates |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, tests, pull requests |
 
 ## ⚖️ License
 
-Codegenome is open-source software licensed under the **[MIT License](https://github.com/Ogro-Projukti/codegenome/blob/main/LICENSE)**.
+Codegenome's original source is licensed under the **[MIT License](https://github.com/Ogro-Projukti/codegenome/blob/main/LICENSE)**. Required graph dependencies include GPL-licensed igraph and Leiden; distributors should read the [license compliance review](docs/license-compliance.md).
 
 <div align="center">
   <br />

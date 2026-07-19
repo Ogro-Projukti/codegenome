@@ -28,15 +28,15 @@ class McpProcessManager:
         if getattr(sys, "frozen", False):
             command = [
                 sys.executable,
-                "--run-mcp-server",
+                "mcp-start",
+                "--path",
+                str(ctx.workspace),
                 "--db-path",
                 str(ctx.db_path),
-                "--host",
-                ctx.config.mcp_host,
-                "--port",
-                str(ctx.config.mcp_port),
                 "--transport",
                 "http",
+                "--port",
+                str(ctx.config.mcp_port),
             ]
         else:
             command = [

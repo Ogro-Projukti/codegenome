@@ -20,4 +20,4 @@ def test_third_party_import(pkg: str) -> None:
 def test_codegenome_import() -> None:
     import codegenome
 
-    assert codegenome.__version__ == "0.1.4"
+    assert codegenome.__version__ == "0.2.0"

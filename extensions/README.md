@@ -31,12 +31,12 @@ Use `--dry-run` to preview output paths without writing files.
 Write MCP server entries into AI client config files:
 
 ```bash
-python -m codegenome.installer \
+codegenome install-mcp \
   --db-path /absolute/path/to/project/.genome/codegenome.db \
   --client cursor \
   --transport http \
   --host 127.0.0.1 \
-  --port 7331
+  --port 7331 .
 ```
 
 Supported installer clients: `claude`, `cursor`, `codex`, `gemini`, `aider`, `windsurf`, `copilot`.

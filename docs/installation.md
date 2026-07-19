@@ -83,21 +83,20 @@ Build the graph first (`codegenome analyze .`). Then choose a transport:
 
 ### HTTP (Cursor and most editor clients)
 
-**Terminal 1** — build, watch, and start HTTP MCP on `127.0.0.1:7331`:
+**Terminal 1** — start HTTP MCP on `127.0.0.1:7331`:
 
 ```bash
-python -m codegenome --workspace . --build --mcp --watch
+codegenome mcp-start --path . --transport http --port 7331 --memory-bounded
 ```
 
 **Terminal 2** — write client config (one time):
 
 ```bash
-python -m codegenome.installer \
-  --db-path "$(pwd)/.genome/codegenome.db" \
+codegenome install-mcp \
   --client cursor \
   --transport http \
   --host 127.0.0.1 \
-  --port 7331
+  --port 7331 .
 ```
 
 Health check:
@@ -112,15 +111,7 @@ Restart your AI client after installing MCP config.
 
 ```bash
 codegenome analyze .
-codegenome mcp-start .
-```
-
-Or run the standalone server module:
-
-```bash
-python -m codegenome.mcp_server \
-  --db-path ./.genome/codegenome.db \
-  --transport stdio
+codegenome mcp-start --path .
 ```
 
 See [MCP integration](mcp-integration.md) for environment variables, supported clients, and agent rules.
@@ -134,6 +125,8 @@ python build_cli.py
 ```
 
 This is optional. The default PyPI entry point is the `codegenome` command.
+The binary bundles GPL-licensed graph dependencies. Do not redistribute it until
+the requirements in [License compliance](license-compliance.md) are satisfied.
 
 ## Troubleshooting
 
@@ -142,14 +135,16 @@ This is optional. The default PyPI entry point is the `codegenome` command.
 | `codegenome: command not found` | Activate your venv or reinstall with `pip install codegenome` |
 | `No graph found` on export/MCP | Run `codegenome analyze .` first |
 | `igraph` build fails | Install platform build tools; on Windows, install MSVC Build Tools |
-| Empty timeline dumps | Run `python -m codegenome --workspace . --build` first |
-| Port 7331 in use | Stop the other MCP instance or pass `--port` to `mcp_server` |
-| Mixed CLI errors | Use subcommands (`codegenome analyze`) or legacy flags (`python -m codegenome --build`), not both in one invocation |
+| Empty timeline output | Run `codegenome analyze .` first |
+| Port 7331 in use | Stop the other MCP instance or pass `--port` to `mcp-start` |
+| Removed alpha flags | Use the migration table in the CLI reference; both entry points now use subcommands |
 
 ## Next steps
 
 | Doc | Description |
 |-----|-------------|
-| [CLI reference](cli-reference.md) | Subcommands, legacy flags, workflows |
+| [CLI reference](cli-reference.md) | Unified commands, options, and migration table |
 | [MCP integration](mcp-integration.md) | Server modes, installer, tools |
 | [Extensions](../extensions/README.md) | Cursor rules and Copilot templates |
+| [Release guide](releasing.md) | TestPyPI and Trusted Publishing |
+| [License compliance](license-compliance.md) | Distribution review and release gate |

@@ -1,0 +1,131 @@
+name: Publish Python distributions
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the tagged source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install build and quality tooling
+        run: |
+          python -m pip install --upgrade pip setuptools wheel build twine cyclonedx-bom==7.3.0
+          python -m pip install -r requirements.txt
+
+      - name: Run release quality gates
+        run: |
+          python -m ruff check src tests
+          python -m pytest -q
+
+      - name: Build wheel and source distribution
+        run: python -m build
+
+      - name: Validate distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Install and smoke-test the wheel
+        run: |
+          python -m pip install --force-reinstall --no-deps dist/*.whl
+          package_test_dir="$(mktemp -d)"
+          cd "$package_test_dir"
+          codegenome --version
+          python -m codegenome --help
+          python -c "from importlib.resources import files; assert files('codegenome').joinpath('py.typed').is_file()"
+
+      - name: Require the tag to match package metadata
+        if: github.event_name == 'push'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          from importlib.metadata import version
+
+          tag = os.environ["RELEASE_TAG"]
+          expected = f"v{version('codegenome')}"
+          if tag != expected:
+              raise SystemExit(f"release tag {tag!r} must equal package version tag {expected!r}")
+          PY
+
+      - name: Generate the resolved runtime SBOM
+        run: |
+          python -m venv release-sbom-env
+          release-sbom-env/bin/python -m pip install dist/*.whl
+          mkdir -p sbom
+          cyclonedx-py environment \
+            --output-format JSON \
+            --output-file sbom/codegenome.cdx.json \
+            release-sbom-env/bin/python
+
+      - name: Store verified distributions and SBOM
+        uses: actions/upload-artifact@v5
+        with:
+          name: python-package-distributions
+          path: |
+            dist/
+            sbom/
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/codegenome
+    permissions:
+      id-token: write
+    steps:
+      - name: Download verified distributions
+        uses: actions/download-artifact@v6
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish with Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          attestations: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/codegenome
+    permissions:
+      id-token: write
+    steps:
+      - name: Download verified distributions
+        uses: actions/download-artifact@v6
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish with Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true

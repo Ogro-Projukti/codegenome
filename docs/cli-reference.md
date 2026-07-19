@@ -1,64 +1,70 @@
 # CLI reference
 
-Codegenome ships two CLI interfaces:
-
-| Interface | Invoke | Best for |
-|-----------|--------|----------|
-| **Modern CLI** | `codegenome <subcommand>` | Day-to-day use, TUI, exports, stdio MCP |
-| **Legacy CLI** | `python -m codegenome --flags` | Watch mode, HTTP MCP, timeline queries, all export formats |
-
-Both operate on a **workspace** (project root). By default that is the current directory (`.`). Graph data is stored under `<workspace>/.genome/`.
-
-## Workspace artifacts
-
-| Path | Purpose |
-|------|---------|
-| `.genome/codegenome.db` | Timeline snapshots (SQLite) |
-| `.genome/graph.json` | Latest graph |
-| `.genome/exports/` | HTML, Markdown, GraphML, etc. |
-| `.genome/scan_cache.db` | Incremental scan cache |
-
-Override the database with `--db-path` on the legacy CLI, or pass `--db-path` to `python -m codegenome.mcp_server`.
-
----
-
-## Modern CLI (`codegenome`)
-
-Install with `pip install codegenome`, then:
+CodeGenome has one Click command group. The installed console script and module
+entry point are equivalent:
 
 ```bash
 codegenome --help
+python -m codegenome --help
 ```
 
-### `analyze`
+Both forms operate on a workspace, defaulting to the current directory. Runtime
+data lives under `<workspace>/.genome/` unless a command accepts `--db-path`.
 
-Build or incrementally update the knowledge graph.
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `analyze` | Build or update a graph; optionally watch, serve MCP, or export multiple formats |
+| `export` | Export an existing graph in one or more formats |
+| `evolve` | Observe changes continuously and optionally serve the live web UI |
+| `mcp-start` | Serve the graph over stdio or HTTP |
+| `install-mcp` | Write MCP entries into supported client configuration files |
+| `metrics` | Print workspace file and line totals as JSON |
+| `timeline` | Print snapshot or node history as JSON |
+| `changes` | Print a delta between two snapshots as JSON |
+| `churn` | Print repository or file churn as JSON |
+| `db-maintain` | Prune snapshots and optionally compact SQLite |
+| `rules` | Generate CodeGenome-managed agent instruction sections |
+| `tui` | Launch the Textual dashboard |
+
+Set global logging before the command, for example
+`codegenome --log-level DEBUG analyze .`.
+
+## Analyze
 
 ```bash
+# Incremental build with the default JSON export
 codegenome analyze .
-codegenome analyze /path/to/my-app
-codegenome analyze --memory-bounded --retain-snapshots 100 .
+
+# Full rebuild and several export formats
+codegenome analyze --full \
+  --format json --format html --format markdown --format graphml .
+
+# Memory-bounded watch mode
+codegenome analyze --memory-bounded --max-working-files 64 \
+  --watch --watch-debounce 10 .
+
+# Build, start loopback HTTP MCP, and watch
+codegenome analyze --mcp --watch .
 ```
 
-Analysis retains the newest 100 snapshots by default. Use `--retain-snapshots`
-to choose another count and `--retention-days` to add an age limit.
+Analysis retains the newest 100 snapshots by default. Change that with
+`--retain-snapshots` and optionally add `--retention-days`.
 
-### `export`
+Supported exports are `json`, `html`, `markdown`, `graphml`, `cypher`, and
+`obsidian`. Repeat `--format` to select more than one.
 
-Export the current graph. Requires a prior `analyze`.
+## Export
+
+Run `analyze` first, then export any supported set:
 
 ```bash
-codegenome export --format json --path .
-codegenome export --format obsidian --path .
+codegenome export --path . --format html
+codegenome export --path . --format graphml --format obsidian
 ```
 
-Supported formats in this subcommand: `json`, `html`, `cypher`, `obsidian`.
-
-For `markdown`, `graphml`, and multi-format exports, use the [legacy CLI](#legacy-cli-python--m-codegenome).
-
-### `evolve`
-
-Run a live observer with a browser-based graph UI. Watches `.py` file changes and rebuilds incrementally.
+## Live observation
 
 ```bash
 codegenome evolve .
@@ -67,204 +73,82 @@ codegenome evolve --live --lan .
 codegenome evolve --live --memory-bounded --retain-snapshots 100 .
 ```
 
-With `--live`, a WebSocket server broadcasts graph updates. The UI is served at `http://localhost:8000/graph.html?live=1`.
+Without `--lan`, services bind to loopback. `--lan` requires `--live`, binds to
+all interfaces, and should be used only on a trusted network because the live
+graph and AI routes do not authenticate clients.
 
-Without `--lan`, HTTP and WebSocket bind explicitly to loopback (`127.0.0.1`). With `--lan`, they bind to all interfaces (`0.0.0.0`) so other devices on the same network can open the graph. The CLI prints a security warning and a shareable LAN URL (for example `http://192.168.1.42:8000/graph.html?live=1`). Live graph and AI routes do not authenticate clients, so use `--lan` only on a trusted network. Use `--live --lan` together for real-time updates on remote viewers.
-
-### `mcp-start`
-
-Start the MCP server over stdio (default) or loopback HTTP for the given workspace.
+## MCP server and client configuration
 
 ```bash
-codegenome mcp-start .
-codegenome mcp-start --transport http --port 7331 --memory-bounded .
+# Stdio (default)
+codegenome mcp-start --path .
+
+# Memory-bounded loopback HTTP
+codegenome mcp-start --path . --transport http --port 7331 --memory-bounded
+
+# Preview a Cursor HTTP configuration
+codegenome install-mcp --client cursor --transport http --dry-run .
+
+# Install a stdio configuration
+codegenome install-mcp --client claude --transport stdio .
 ```
 
-HTTP binds to `127.0.0.1` unless `--lan` is explicitly supplied.
+HTTP binds to `127.0.0.1` unless `--lan` is supplied. Client values are
+`claude`, `cursor`, `codex`, `gemini`, `aider`, `windsurf`, and `copilot`.
 
-### `db-maintain`
+## Metrics and timeline queries
 
-Prune historical snapshots transactionally and optionally return unused SQLite
-pages to disk:
+All query output is JSON and errors are written to stderr.
+
+```bash
+codegenome metrics .
+codegenome timeline --path .
+codegenome timeline --path . --node-id "file:src/main.py"
+codegenome changes --path . --snapshot-from 1 --snapshot-to 3
+codegenome churn --path . --limit 10
+codegenome churn --path . --file src/main.py
+```
+
+Use `--db-path /absolute/path/codegenome.db` on `timeline`, `changes`, `churn`,
+`export`, or `mcp-start` when the database is outside the workspace default.
+
+## Database maintenance
 
 ```bash
 codegenome db-maintain --path . --retain-snapshots 100
 codegenome db-maintain --path . --retain-snapshots 50 --max-age-days 30 --compact
 ```
 
-The latest snapshot is always protected. `--compact` runs SQLite `VACUUM`, so
-schedule it when no long-running CodeGenome service is using the database.
+The newest snapshot is protected. `--compact` runs SQLite `VACUUM`; schedule it
+when no long-running CodeGenome service is using the database.
 
-### `rules`
-
-Generate agent instruction files (Cursor rules, Copilot instructions, `AGENTS.md`, etc.).
+## Agent rules and TUI
 
 ```bash
-codegenome rules .
 codegenome rules --client cursor --client copilot --port 7331 .
 codegenome rules --dry-run .
-```
-
-Clients: `cursor`, `copilot`, `windsurf`, `agents`, or `all` (default when omitted).
-
-Generated content is confined to a CodeGenome-managed section. Existing user-authored instructions outside that section are preserved, and an existing file is backed up to `<filename>.codegenome.bak` before an atomic update.
-
-### `tui`
-
-Launch the interactive terminal dashboard.
-
-```bash
 codegenome tui
 ```
 
-From the TUI you can start live graph observation in two modes:
+Rule generation updates only a CodeGenome-managed section and backs up an
+existing file before changing it.
 
-- **Live Evolve (Local)** — graph UI and WebSocket on localhost only
-- **Live Evolve (LAN)** — exposes HTTP and WebSocket on the local network so other devices can view the graph
-- **Quit** — stops any background processes and exits the TUI
+## Migration from the alpha flag interface
 
----
+The parallel argparse front door was removed in 0.2.0. Use these replacements:
 
-## Legacy CLI (`python -m codegenome`)
+| Removed invocation | Unified command |
+|---|---|
+| `--workspace PATH --build` | `analyze PATH` |
+| `--build --full` | `analyze --full PATH` |
+| `--build --export FMT ...` | repeated `analyze --format FMT PATH` |
+| `--build --watch` | `analyze --watch PATH` |
+| `--print-metrics` | `metrics PATH` |
+| `--dump-timeline` | `timeline --path PATH` |
+| `--dump-changes --snapshot-from A --snapshot-to B` | `changes --path PATH --snapshot-from A --snapshot-to B` |
+| `--dump-churn` | `churn --path PATH` |
+| `python -m codegenome.installer ...` | `install-mcp ...` |
+| `python -m codegenome.mcp_server ...` | `mcp-start ...` |
 
-The flag-based interface supports watch mode, HTTP MCP, timeline queries, metrics, and every export format.
-
-```bash
-python -m codegenome --help
-```
-
-### Build and export
-
-```bash
-# Incremental build
-python -m codegenome --workspace . --build
-
-# Full rebuild
-python -m codegenome --workspace . --build --full
-
-# Custom exports (default: json, html, markdown)
-python -m codegenome --workspace . --build --export json markdown graphml cypher obsidian
-```
-
-Supported export formats: `json`, `html`, `markdown`, `graphml`, `cypher`, `obsidian`.
-
-### Watch and live graph
-
-```bash
-# Debounced rebuild on file changes (default debounce: 30s)
-python -m codegenome --workspace . --build --watch --watch-debounce 10
-
-# Poll file/line totals and rebuild when they increase
-python -m codegenome --workspace . --build --live-graph --live-graph-interval 60
-```
-
-### Metrics
-
-```bash
-python -m codegenome --workspace . --print-metrics
-# {"file_count": 142, "line_count": 18450}
-```
-
-### MCP via legacy CLI
-
-```bash
-python -m codegenome --workspace . --build --mcp --watch
-```
-
-Starts HTTP MCP on `127.0.0.1:7331` after build. For stdio or a custom port, use `python -m codegenome.mcp_server`.
-
-### Timeline queries
-
-JSON is printed to stdout. Requires at least one prior build.
-
-```bash
-python -m codegenome --workspace . --dump-timeline
-python -m codegenome --workspace . --dump-timeline --node-id "file:src/main.py"
-python -m codegenome --workspace . --dump-changes --snapshot-from 1 --snapshot-to 3
-python -m codegenome --workspace . --dump-churn --churn-limit 10
-```
-
-### Legacy flag reference
-
-| Flag | Description |
-|------|-------------|
-| `--workspace PATH` | Project root (default: `.`) |
-| `--build` | Run graph build |
-| `--full` | Force full rebuild |
-| `--watch` | Debounced incremental rebuild |
-| `--watch-debounce SECONDS` | Debounce interval (default: 30) |
-| `--live-graph` | Rebuild when file/line totals increase |
-| `--live-graph-interval SECONDS` | Poll interval (default: 30) |
-| `--print-metrics` | Print file/line JSON and exit |
-| `--export FMT …` | Export formats after build |
-| `--db-path PATH` | Timeline DB path |
-| `--mcp` | Start HTTP MCP after build |
-| `--log-level LEVEL` | `DEBUG` … `ERROR` |
-| `--dump-timeline` | Dump timeline JSON |
-| `--dump-changes` | Snapshot diff (needs `--snapshot-from/to`) |
-| `--dump-churn` | Churn rankings |
-| `--node-id ID` | Filter `--dump-timeline` |
-| `--snapshot-from ID` | Start snapshot |
-| `--snapshot-to ID` | End snapshot |
-| `--churn-file PATH` | Filter churn to one file |
-| `--churn-limit N` | Max churn rows (default: 25) |
-
-**Requires at least one of:** `--build`, `--watch`, `--live-graph` (unless using query or metrics-only flags).
-
----
-
-## Related modules
-
-| Command | Purpose |
-|---------|---------|
-| `python -m codegenome.mcp_server …` | Standalone MCP (stdio or custom HTTP port) |
-| `python -m codegenome.installer …` | Write MCP entries into AI client configs |
-
-See [MCP integration](mcp-integration.md) and [Installation](installation.md).
-
----
-
-## Exit codes
-
-| Code | Meaning |
-|------|---------|
-| `0` | Success |
-| `1` | Error (details on stderr) |
-
----
-
-## Common workflows
-
-### Quick local analysis
-
-```bash
-codegenome analyze .
-codegenome export --format html --path .
-codegenome tui
-```
-
-### CI graph build
-
-```bash
-python -m codegenome --workspace . --build --export json
-```
-
-### Local dev with Cursor (HTTP MCP)
-
-Terminal 1:
-
-```bash
-python -m codegenome --workspace . --build --mcp --watch
-```
-
-Terminal 2:
-
-```bash
-python -m codegenome.installer \
-  --db-path "$(pwd)/.genome/codegenome.db" \
-  --client cursor \
-  --transport http
-codegenome rules --client cursor .
-```
-
-Restart Cursor after installing MCP config and rules.
+Do not mix removed top-level flags with subcommands. `python -m codegenome` now
+uses the same commands and options as the console script.

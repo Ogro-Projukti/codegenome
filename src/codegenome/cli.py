@@ -1,17 +1,85 @@
-"""Command-line interface for codegenome."""
+"""Unified Click command-line interface for CodeGenome."""
 
+from __future__ import annotations
+
+import json
+import logging
 import sys
+from dataclasses import asdict
 from pathlib import Path
+from typing import Callable
+
 import click
 
-from codegenome.core import CodeGenomeEngine, CodeGenomeConfig
+from codegenome.core import CodeGenomeConfig, CodeGenomeEngine
+from codegenome.exporter import SUPPORTED_FORMATS
+from codegenome.version import __version__
 
-@click.group()
-def cli():
-    """codegenome - Open-source CLI for building and querying local codebase knowledge graphs."""
-    pass
+EXPORT_FORMATS = tuple(sorted(SUPPORTED_FORMATS))
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+
+
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.option(
+    "--log-level",
+    type=click.Choice(LOG_LEVELS, case_sensitive=False),
+    default="INFO",
+    show_default=True,
+    help="Logging verbosity for this invocation.",
+)
+@click.version_option(version=__version__)
+def cli(log_level: str) -> None:
+    """Build, inspect, and serve local codebase knowledge graphs."""
+    logging.basicConfig(
+        level=getattr(logging, log_level.upper()),
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+
 
 @cli.command()
+@click.option("--full", is_flag=True, help="Force a full rebuild.")
+@click.option(
+    "--format",
+    "export_formats",
+    multiple=True,
+    type=click.Choice(EXPORT_FORMATS, case_sensitive=False),
+    default=("json",),
+    show_default=True,
+    help="Export format written after analysis; repeat for multiple formats.",
+)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    help="Timeline database path (default: PATH/.genome/codegenome.db).",
+)
+@click.option("--watch", is_flag=True, help="Watch for changes after the initial build.")
+@click.option(
+    "--watch-debounce",
+    type=click.FloatRange(min=0.0),
+    default=30.0,
+    show_default=True,
+    metavar="SECONDS",
+    help="Inactivity interval before a watched rebuild.",
+)
+@click.option(
+    "--live-graph",
+    is_flag=True,
+    help="Poll workspace totals and rebuild when the workspace grows.",
+)
+@click.option(
+    "--live-graph-interval",
+    type=click.FloatRange(min=1.0),
+    default=30.0,
+    show_default=True,
+    metavar="SECONDS",
+    help="Polling interval used by --live-graph.",
+)
+@click.option(
+    "--start-mcp",
+    "--mcp",
+    is_flag=True,
+    help="Start loopback HTTP MCP after the build.",
+)
 @click.option(
     "--memory-bounded",
     is_flag=True,
@@ -21,15 +89,15 @@ def cli():
     "--max-working-files",
     default=64,
     show_default=True,
-    type=int,
-    help="Maximum files resident in memory when --memory-bounded is enabled.",
+    type=click.IntRange(min=1),
+    help="Maximum resident files in memory-bounded mode.",
 )
 @click.option(
     "--retain-snapshots",
     default=100,
     show_default=True,
     type=click.IntRange(min=1),
-    help="Automatically retain only the newest snapshot count after analysis.",
+    help="Retain at most this many recent snapshots.",
 )
 @click.option(
     "--retention-days",
@@ -37,40 +105,64 @@ def cli():
     type=click.FloatRange(min=0.0),
     help="Also remove snapshots older than this many days.",
 )
-@click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
+@click.argument("path", default=".", type=click.Path(path_type=Path, exists=True, file_okay=False))
 def analyze(
-    path: str,
+    path: Path,
+    full: bool,
+    export_formats: tuple[str, ...],
+    db_path: Path | None,
+    watch: bool,
+    watch_debounce: float,
+    live_graph: bool,
+    live_graph_interval: float,
+    start_mcp: bool,
     memory_bounded: bool,
     max_working_files: int,
     retain_snapshots: int,
     retention_days: float | None,
-):
-    """Triggers the tree-sitter scan, builds the ASTs, and saves to the SQLite graph_store.
-
-    Args:
-        path (str): The workspace directory path to analyze.
-    """
-    click.echo(f"Analyzing workspace at {path}...")
-    workspace = Path(path).resolve()
+) -> None:
+    """Build or incrementally update the graph for PATH."""
+    if start_mcp and not (watch or live_graph):
+        raise click.UsageError(
+            "--mcp requires --watch or --live-graph; use 'mcp-start' for a standalone server"
+        )
+    workspace = path.resolve()
+    click.echo(f"Analyzing workspace at {workspace}...")
     config = CodeGenomeConfig(
         workspace=workspace,
-        export_formats=("json",),
+        db_path=db_path.resolve() if db_path else None,
+        export_formats=tuple(fmt.lower() for fmt in export_formats),
+        start_mcp=start_mcp,
+        watch_debounce_seconds=watch_debounce,
+        live_graph=live_graph,
+        live_graph_poll_seconds=live_graph_interval,
         memory_bounded=memory_bounded,
-        max_working_files=max(1, max_working_files),
+        max_working_files=max_working_files,
         snapshot_retention_count=retain_snapshots,
         snapshot_retention_days=retention_days,
     )
     engine = CodeGenomeEngine(config)
 
-    def on_progress(message: str) -> None:
-        click.echo(message)
-    
     try:
-        result = engine.build(full=False, on_progress=on_progress)
-        click.echo(f"Build complete: {result.graph.number_of_nodes()} nodes, {result.graph.number_of_edges()} edges.")
-    except Exception as e:
-        click.echo(f"Error during analysis: {e}", err=True)
-        sys.exit(1)
+        result = engine.build(full=full, on_progress=click.echo)
+        click.echo(
+            f"Build complete: {result.graph.number_of_nodes()} nodes, "
+            f"{result.graph.number_of_edges()} edges."
+        )
+        if start_mcp:
+            process = engine.start_mcp()
+            click.echo(
+                f"MCP server started (pid={process.pid}) on "
+                f"{config.mcp_host}:{config.mcp_port}."
+            )
+        if live_graph:
+            engine.monitor_live_graph()
+        elif watch:
+            engine.watch()
+    except click.ClickException:
+        raise
+    except Exception as exc:
+        raise click.ClickException(f"Analysis failed: {exc}") from exc
     finally:
         engine.close()
 
@@ -78,47 +170,45 @@ def analyze(
 @cli.command()
 @click.option(
     "--format",
-    "export_format",
-    type=click.Choice(["obsidian", "html", "cypher", "json"], case_sensitive=False),
+    "export_formats",
+    multiple=True,
     required=True,
-    help="Format to export the graph store into."
+    type=click.Choice(EXPORT_FORMATS, case_sensitive=False),
+    help="Export format; repeat for multiple formats.",
 )
 @click.option(
     "--path",
     default=".",
-    type=click.Path(exists=True, file_okay=False),
-    help="Workspace path to export from."
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
+    show_default=True,
+    help="Workspace containing the graph database.",
 )
-def export(export_format: str, path: str):
-    """Triggers the exporter pipeline to dump the current graph store into the requested format.
-
-    Args:
-        export_format (str): Format to export the graph store into (e.g. obsidian, html).
-        path (str): The workspace directory path to export from.
-    """
-    workspace = Path(path).resolve()
-    config = CodeGenomeConfig(workspace=workspace)
-    engine = CodeGenomeEngine(config)
-    
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    help="Timeline database path (default: PATH/.genome/codegenome.db).",
+)
+def export(export_formats: tuple[str, ...], path: Path, db_path: Path | None) -> None:
+    """Export an existing graph in one or more formats."""
+    workspace = path.resolve()
+    engine = CodeGenomeEngine(
+        CodeGenomeConfig(
+            workspace=workspace,
+            db_path=db_path.resolve() if db_path else None,
+        )
+    )
     try:
-        # Check if the graph exists. If not loaded, it means it hasn't been analyzed.
-        # engine._load_existing_graph() is called in CodeGenomeEngine.__init__.
-        # Alternatively, we can check if the graph has nodes.
         if engine.builder.graph.number_of_nodes() == 0:
-            click.echo("Error: No graph found. Please run 'codegenome analyze' first before exporting.", err=True)
-            sys.exit(1)
-            
-        click.echo(f"Exporting workspace {workspace} to {export_format}...")
-        result_paths = engine.export(formats=[export_format.lower()])
-        for fmt, out_path in result_paths.items():
-            click.echo(f"Successfully exported {fmt} to: {out_path}")
-            
-    except RuntimeError as e:
-        click.echo(f"Export error: {e}", err=True)
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"Unexpected error during export: {e}", err=True)
-        sys.exit(1)
+            raise click.ClickException(
+                "No graph found. Run 'codegenome analyze' before exporting."
+            )
+        result_paths = engine.export(formats=[fmt.lower() for fmt in export_formats])
+        for name, output_path in sorted(result_paths.items()):
+            click.echo(f"Exported {name}: {output_path}")
+    except click.ClickException:
+        raise
+    except Exception as exc:
+        raise click.ClickException(f"Export failed: {exc}") from exc
     finally:
         engine.close()
 
@@ -127,66 +217,79 @@ def export(export_format: str, path: str):
 @click.option(
     "--path",
     default=".",
-    type=click.Path(exists=True, file_okay=False),
-    help="Workspace path for the MCP server."
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
+    show_default=True,
+    help="Workspace served by MCP.",
+)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    help="Timeline database path (default: PATH/.genome/codegenome.db).",
 )
 @click.option(
     "--transport",
     type=click.Choice(["stdio", "http"], case_sensitive=False),
     default="stdio",
-    help="Transport protocol (stdio or http)."
+    show_default=True,
+    help="MCP transport protocol.",
 )
-@click.option(
-    "--port",
-    type=int,
-    default=7331,
-    help="Port to bind to when using HTTP transport."
-)
+@click.option("--port", type=click.IntRange(min=1, max=65535), default=7331, show_default=True)
 @click.option(
     "--lan",
     is_flag=True,
-    help="Allow HTTP transport to bind on LAN (0.0.0.0) instead of localhost.",
+    help="Allow HTTP to bind on 0.0.0.0 instead of loopback.",
 )
 @click.option(
     "--memory-bounded",
     is_flag=True,
-    help="Load MCP query subgraphs on demand instead of the full graph.",
+    help="Load query subgraphs from SQLite on demand.",
 )
 @click.option(
     "--full-analysis-on-demand",
     is_flag=True,
-    help="Allow global MCP analysis tools to temporarily load the full graph.",
+    help="Allow global tools to temporarily load the full graph.",
 )
-def mcp_start(path: str, transport: str, port: int, lan: bool, memory_bounded: bool, full_analysis_on_demand: bool):
-    """Initializes and starts the MCP server so external LLMs can connect.
+def mcp_start(
+    path: Path,
+    db_path: Path | None,
+    transport: str,
+    port: int,
+    lan: bool,
+    memory_bounded: bool,
+    full_analysis_on_demand: bool,
+) -> None:
+    """Start the MCP server for an analyzed workspace."""
+    workspace = path.resolve()
+    resolved_db = (db_path or workspace / ".genome" / "codegenome.db").resolve()
+    transport = transport.lower()
+    if lan and transport != "http":
+        raise click.UsageError("--lan requires --transport http")
+    if not resolved_db.is_file():
+        raise click.ClickException(
+            f"No CodeGenome database found at {resolved_db}. Run 'codegenome analyze' first."
+        )
 
-    Args:
-        path (str): The workspace directory path for the MCP server.
-        transport (str): Transport protocol (stdio or http).
-        port (int): Port to bind to when using HTTP transport.
-        lan (bool): Whether to expose HTTP transport on the local network.
-    """
-    workspace = Path(path).resolve()
-    config = CodeGenomeConfig(workspace=workspace)
-    engine = CodeGenomeEngine(config)
-    db_path = engine.db_path
-    engine.close()  # Close the engine since the MCP server process will open its own connection
-    
-    click.echo(f"Starting MCP server for workspace {workspace} (DB: {db_path}) via {transport}...", err=True)
-    
-    from codegenome.mcp_server import main as mcp_main
-    args = ["--db-path", str(db_path), "--transport", transport.lower()]
+    host = "0.0.0.0" if lan else "127.0.0.1"
+    args = ["--db-path", str(resolved_db), "--transport", transport]
     if memory_bounded:
         args.append("--memory-bounded")
     if full_analysis_on_demand:
         args.append("--full-analysis-on-demand")
-    if transport.lower() == "http":
-        host = "0.0.0.0" if lan else "127.0.0.1"
-        args.extend(["--host", host])
-        args.extend(["--port", str(port)])
+    if transport == "http":
+        args.extend(["--host", host, "--port", str(port)])
         if lan:
             args.append("--allow-remote-http")
-    sys.exit(mcp_main(args))
+
+    click.echo(
+        f"Starting MCP for {workspace} (DB: {resolved_db}) via {transport}...",
+        err=True,
+    )
+    from codegenome.mcp_server import main as mcp_main
+
+    exit_code = mcp_main(args)
+    if exit_code:
+        raise click.exceptions.Exit(exit_code)
+
 
 @cli.command()
 @click.option("--live", is_flag=True, help="Enable WebSocket real-time broadcast.")
@@ -204,15 +307,15 @@ def mcp_start(path: str, transport: str, port: int, lan: bool, memory_bounded: b
     "--max-working-files",
     default=64,
     show_default=True,
-    type=int,
-    help="Maximum files resident in memory when --memory-bounded is enabled.",
+    type=click.IntRange(min=1),
+    help="Maximum resident files in memory-bounded mode.",
 )
 @click.option(
     "--retain-snapshots",
     default=100,
     show_default=True,
     type=click.IntRange(min=1),
-    help="Automatically retain only the newest snapshot count while evolving.",
+    help="Retain at most this many recent snapshots.",
 )
 @click.option(
     "--retention-days",
@@ -220,32 +323,29 @@ def mcp_start(path: str, transport: str, port: int, lan: bool, memory_bounded: b
     type=click.FloatRange(min=0.0),
     help="Also remove snapshots older than this many days.",
 )
-@click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
+@click.argument("path", default=".", type=click.Path(path_type=Path, exists=True, file_okay=False))
 def evolve(
-    path: str,
+    path: Path,
     live: bool,
     lan: bool,
     memory_bounded: bool,
     max_working_files: int,
     retain_snapshots: int,
     retention_days: float | None,
-):
-    """Start real-time architectural observer and open live UI.
+) -> None:
+    """Observe PATH continuously and serve the live graph UI."""
+    if lan and not live:
+        raise click.UsageError("--lan requires --live")
 
-    Args:
-        path (str): The workspace directory path to observe.
-        live (bool): Whether to enable WebSocket real-time broadcast.
-        lan (bool): Whether to bind services for LAN access.
-    """
     from codegenome.live_session import LiveSession, LiveSessionConfig
 
     session = LiveSession(
         LiveSessionConfig(
-            workspace=Path(path).resolve(),
+            workspace=path.resolve(),
             live=live,
             lan=lan,
             memory_bounded=memory_bounded,
-            max_working_files=max(1, max_working_files),
+            max_working_files=max_working_files,
             snapshot_retention_count=retain_snapshots,
             snapshot_retention_days=retention_days,
         ),
@@ -258,8 +358,9 @@ def evolve(
 @click.option(
     "--path",
     default=".",
-    type=click.Path(exists=True, file_okay=False),
-    help="Workspace whose .genome/codegenome.db should be maintained.",
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
+    show_default=True,
+    help="Workspace whose snapshot database should be maintained.",
 )
 @click.option(
     "--retain-snapshots",
@@ -278,10 +379,10 @@ def evolve(
     "--compact/--no-compact",
     default=False,
     show_default=True,
-    help="VACUUM the database after pruning to return free pages to disk.",
+    help="VACUUM after pruning to return free pages to disk.",
 )
 def db_maintain(
-    path: str,
+    path: Path,
     retain_snapshots: int,
     max_age_days: float | None,
     compact: bool,
@@ -289,7 +390,7 @@ def db_maintain(
     """Prune snapshot history transactionally and optionally compact SQLite."""
     from codegenome.timeline import GraphTimeline
 
-    db_path = Path(path).resolve() / ".genome" / "codegenome.db"
+    db_path = path.resolve() / ".genome" / "codegenome.db"
     if not db_path.exists():
         raise click.ClickException(f"No CodeGenome database found at {db_path}")
     timeline = GraphTimeline(db_path)
@@ -311,74 +412,224 @@ def db_maintain(
     )
 
 
+def _resolved_database(path: Path, db_path: Path | None) -> Path:
+    return (db_path or path.resolve() / ".genome" / "codegenome.db").resolve()
+
+
+def _run_store_query(db_path: Path, query: Callable[[object], object]) -> None:
+    from codegenome.graph_store import GraphStore, GraphStoreError
+
+    if not db_path.is_file():
+        raise click.ClickException(f"No CodeGenome database found at {db_path}")
+    store = GraphStore(db_path, memory_bounded=True)
+    try:
+        store.open()
+        click.echo(json.dumps(query(store), sort_keys=True))
+    except (GraphStoreError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        store.close()
+
+
+def _database_options(command: Callable[..., object]) -> Callable[..., object]:
+    command = click.option(
+        "--db-path",
+        type=click.Path(path_type=Path, dir_okay=False),
+        help="Timeline database path (default: PATH/.genome/codegenome.db).",
+    )(command)
+    command = click.option(
+        "--path",
+        default=".",
+        type=click.Path(path_type=Path, exists=True, file_okay=False),
+        show_default=True,
+        help="Workspace containing the timeline database.",
+    )(command)
+    return command
+
+
+@cli.command()
+@_database_options
+@click.option("--node-id", help="Return history for one node ID.")
+def timeline(path: Path, db_path: Path | None, node_id: str | None) -> None:
+    """Print snapshot or node history as JSON."""
+    _run_store_query(
+        _resolved_database(path, db_path),
+        lambda store: store.get_timeline(node_id=node_id),
+    )
+
+
+@cli.command()
+@_database_options
+@click.option("--snapshot-from", type=click.IntRange(min=1), required=True)
+@click.option("--snapshot-to", type=click.IntRange(min=1), required=True)
+def changes(
+    path: Path,
+    db_path: Path | None,
+    snapshot_from: int,
+    snapshot_to: int,
+) -> None:
+    """Print the delta between two snapshots as JSON."""
+    _run_store_query(
+        _resolved_database(path, db_path),
+        lambda store: store.get_changes(
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+        ),
+    )
+
+
+@cli.command()
+@_database_options
+@click.option("--file", "file_path", help="Return churn for a single file path.")
+@click.option("--snapshot-from", type=click.IntRange(min=1))
+@click.option("--snapshot-to", type=click.IntRange(min=1))
+@click.option("--limit", type=click.IntRange(min=1), default=25, show_default=True)
+def churn(
+    path: Path,
+    db_path: Path | None,
+    file_path: str | None,
+    snapshot_from: int | None,
+    snapshot_to: int | None,
+    limit: int,
+) -> None:
+    """Print file or repository churn as JSON."""
+    _run_store_query(
+        _resolved_database(path, db_path),
+        lambda store: store.get_churn(
+            file_path=file_path,
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+            limit=limit,
+        ),
+    )
+
+
+@cli.command()
+@click.argument("path", default=".", type=click.Path(path_type=Path, exists=True, file_okay=False))
+def metrics(path: Path) -> None:
+    """Print workspace file and line totals as JSON."""
+    from codegenome.workspace_metrics import WorkspaceMetricsScanner
+
+    click.echo(json.dumps(asdict(WorkspaceMetricsScanner(path.resolve()).scan()), sort_keys=True))
+
+
+@cli.command(name="install-mcp")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    help="Timeline database path (default: PATH/.genome/codegenome.db).",
+)
+@click.option(
+    "--python",
+    "python_executable",
+    default=sys.executable,
+    show_default=True,
+    help="Python executable written for stdio transport.",
+)
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "http"], case_sensitive=False),
+    default="stdio",
+    show_default=True,
+)
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", type=click.IntRange(min=1, max=65535), default=7331, show_default=True)
+@click.option(
+    "--client",
+    multiple=True,
+    type=click.Choice(
+        ["claude", "cursor", "codex", "gemini", "aider", "windsurf", "copilot"],
+        case_sensitive=False,
+    ),
+    help="Install only selected clients; repeat for multiple clients.",
+)
+@click.option("--dry-run", is_flag=True, help="Print target paths without writing files.")
+@click.argument("path", default=".", type=click.Path(path_type=Path, exists=True, file_okay=False))
+def install_mcp(
+    db_path: Path | None,
+    python_executable: str,
+    transport: str,
+    host: str,
+    port: int,
+    client: tuple[str, ...],
+    dry_run: bool,
+    path: Path,
+) -> None:
+    """Write CodeGenome MCP entries into supported client configs."""
+    from codegenome.installer import (
+        build_server_entry,
+        client_targets,
+        install_client,
+    )
+
+    resolved_db = _resolved_database(path, db_path)
+    server_entry = build_server_entry(
+        python_executable=python_executable,
+        db_path=str(resolved_db),
+        transport=transport.lower(),
+        host=host,
+        port=port,
+    )
+    selected = {name.lower() for name in client} if client else None
+    installed: list[tuple[str, Path]] = []
+    for target in client_targets():
+        if selected is not None and target.key not in selected:
+            continue
+        output_path = install_client(target, server_entry=server_entry, dry_run=dry_run)
+        installed.append((target.label, output_path))
+
+    if not installed:
+        raise click.ClickException("No clients selected.")
+    action = "Would install" if dry_run else "Installed"
+    for label, output_path in installed:
+        click.echo(f"{action} {label}: {output_path}")
+
+
 @cli.command()
 @click.option(
     "--client",
     multiple=True,
     type=click.Choice(["cursor", "copilot", "windsurf", "agents", "all"], case_sensitive=False),
-    help="Target AI client to generate rules for (repeatable). Use 'all' for all clients."
+    help="Target agent client; repeat for multiple clients.",
 )
-@click.option(
-    "--port",
-    type=int,
-    default=7331,
-    help="MCP server port to embed in the generated rules."
-)
-@click.option(
-    "--dry-run",
-    is_flag=True,
-    help="Print target paths without writing files."
-)
-@click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
-def rules(client: tuple[str], port: int, dry_run: bool, path: str):
-    """Generate agent rules (e.g. .cursorrules, AGENTS.md) pointing to the MCP server.
-
-    Args:
-        client (tuple[str]): Target AI client(s) to generate rules for.
-        port (int): MCP server port to embed in the generated rules.
-        dry_run (bool): If True, print target paths without writing files.
-        path (str): The workspace directory path.
-    """
+@click.option("--port", type=click.IntRange(min=1, max=65535), default=7331, show_default=True)
+@click.option("--dry-run", is_flag=True, help="Print target paths without writing files.")
+@click.argument("path", default=".", type=click.Path(path_type=Path, exists=True, file_okay=False))
+def rules(client: tuple[str, ...], port: int, dry_run: bool, path: Path) -> None:
+    """Generate agent instruction files that point to the MCP server."""
     from codegenome.rules import generate_rules
-    
-    workspace = Path(path).resolve()
-    
-    # default to all if no clients provided
+
+    workspace = path.resolve()
     selected = list(client) if client else ["all"]
-    
-    click.echo(f"Generating rules for workspace {workspace} (MCP Port: {port})...")
-    
     try:
         results = generate_rules(
             selected_clients=selected,
             port=port,
             workspace=workspace,
-            dry_run=dry_run
+            dry_run=dry_run,
         )
-        
-        if not results:
-            click.echo("No clients selected or found.")
-            return
+    except Exception as exc:
+        raise click.ClickException(f"Rule generation failed: {exc}") from exc
+    if not results:
+        click.echo("No clients selected or found.")
+        return
 
-        action = "Would generate" if dry_run else "Generated"
-        for label, out_path in results:
-            # try to make path relative to workspace for cleaner output
-            try:
-                rel_path = out_path.relative_to(workspace)
-                click.echo(f"{action} {label} rules at: {rel_path}")
-            except ValueError:
-                click.echo(f"{action} {label} rules at: {out_path}")
-                
-    except Exception as e:
-        click.echo(f"Error generating rules: {e}", err=True)
-        sys.exit(1)
+    action = "Would generate" if dry_run else "Generated"
+    for label, output_path in results:
+        try:
+            display_path = output_path.relative_to(workspace)
+        except ValueError:
+            display_path = output_path
+        click.echo(f"{action} {label} rules at: {display_path}")
 
 
 @cli.command()
-def tui():
-    """Launch the interactive Textual TUI dashboard."""
+def tui() -> None:
+    """Launch the interactive Textual dashboard."""
     from codegenome.tui import main as tui_main
+
     tui_main()
+
 
 if __name__ == "__main__":
     cli()

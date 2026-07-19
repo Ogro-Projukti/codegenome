@@ -8,21 +8,20 @@ Build the graph before connecting clients:
 codegenome analyze .
 ```
 
-## Quick setup (HTTP + watch)
+## Quick setup (HTTP)
 
 Best for Cursor, Copilot (VS Code), and other HTTP-based clients.
 
 ```bash
-# Terminal 1: build + MCP + watch
-python -m codegenome --workspace . --build --mcp --watch
+# Terminal 1: serve the analyzed graph
+codegenome mcp-start --path . --transport http --port 7331 --memory-bounded
 
 # Terminal 2: install client config
-python -m codegenome.installer \
-  --db-path "$(pwd)/.genome/codegenome.db" \
+codegenome install-mcp \
   --client cursor \
   --transport http \
   --host 127.0.0.1 \
-  --port 7331
+  --port 7331 .
 
 # Optional: generate agent rules in the workspace
 codegenome rules --client cursor --port 7331 .
@@ -36,41 +35,27 @@ Best for Claude Desktop and agents that spawn an MCP subprocess.
 
 ```bash
 codegenome analyze .
-codegenome mcp-start .
+codegenome mcp-start --path .
 ```
 
-Or configure clients to run the module directly:
+Use `codegenome install-mcp --transport stdio .` when writing client config for stdio mode.
+
+## MCP server
 
 ```bash
-python -m codegenome.mcp_server \
-  --db-path ./.genome/codegenome.db \
-  --transport stdio
-```
-
-Use `python -m codegenome.installer --transport stdio` when writing client config for stdio mode.
-
-## Standalone MCP server
-
-```bash
-python -m codegenome.mcp_server --help
+codegenome mcp-start --help
 
 # HTTP
-python -m codegenome.mcp_server \
-  --db-path ./.genome/codegenome.db \
-  --host 127.0.0.1 \
-  --port 7331 \
-  --transport http
+codegenome mcp-start --path . --transport http --port 7331
 
 # Stdio
-python -m codegenome.mcp_server \
-  --db-path ./.genome/codegenome.db \
-  --transport stdio
+codegenome mcp-start --path . --transport stdio
 ```
 
 ## MCP config installer
 
 ```bash
-python -m codegenome.installer --help
+codegenome install-mcp --help
 ```
 
 | Flag | Description |
@@ -155,10 +140,10 @@ codegenome analyze .
 
 | Problem | Solution |
 |---------|----------|
-| Connection refused | Run HTTP MCP (`python -m codegenome --mcp --build --watch`) or `mcp_server`; ensure the graph was built |
-| Port 7331 in use | Stop the other instance or run `mcp_server --port 7332` and update client config |
+| Connection refused | Run `codegenome mcp-start --path . --transport http`; ensure the graph was built |
+| Port 7331 in use | Stop the other instance or pass `--port 7332` to `mcp-start` and update client config |
 | Empty tool results | Run `codegenome analyze .` first; confirm `.genome/codegenome.db` exists |
-| Client not using MCP | Restart the client after `installer`; verify the config file path |
-| Stdio vs HTTP mismatch | Match `--transport` in `installer` with how the server is started |
+| Client not using MCP | Restart the client after `install-mcp`; verify the config file path |
+| Stdio vs HTTP mismatch | Match `--transport` in `install-mcp` with how the server is started |
 
 See also [CLI reference](cli-reference.md) and [Installation](installation.md).

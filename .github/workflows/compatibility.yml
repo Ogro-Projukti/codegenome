@@ -15,10 +15,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -41,10 +43,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -69,17 +73,19 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
 
       - name: Install project quality tooling
         run: |
-          python -m pip install --upgrade pip setuptools wheel build
+          python -m pip install --upgrade pip setuptools wheel build twine
           python -m pip install -r requirements.txt
 
       - name: Ruff
@@ -90,3 +96,14 @@ jobs:
 
       - name: Build source and wheel distributions
         run: python -m build
+
+      - name: Validate distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Test the installed wheel outside the source tree
+        run: |
+          python -m pip install --force-reinstall --no-deps dist/*.whl
+          package_test_dir="$(mktemp -d)"
+          cd "$package_test_dir"
+          python -m codegenome --help
+          python -c "from importlib.resources import files; assert files('codegenome').joinpath('py.typed').is_file()"

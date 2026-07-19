@@ -1,13 +1,14 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "codegenome"
-version = "0.1.4"
+dynamic = ["version"]
 description = "Open-source CLI for building and querying local codebase knowledge graphs"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.11"
 authors = [{ name = "CodeGenome Contributors" }]
 keywords = ["code-analysis", "knowledge-graph", "mcp", "cli", "tree-sitter"]
@@ -60,29 +61,33 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/codegenome-dev/codegenome"
-Documentation = "https://github.com/codegenome-dev/codegenome#readme"
-Repository = "https://github.com/codegenome-dev/codegenome"
-Issues = "https://github.com/codegenome-dev/codegenome/issues"
+Homepage = "https://github.com/Ogro-Projukti/codegenome"
+Documentation = "https://github.com/Ogro-Projukti/codegenome/tree/main/docs"
+Repository = "https://github.com/Ogro-Projukti/codegenome"
+Issues = "https://github.com/Ogro-Projukti/codegenome/issues"
 
 [project.scripts]
 codegenome = "codegenome.cli:cli"
 
 [tool.setuptools]
 include-package-data = true
+package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "codegenome.version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 codegenome = [
+  "py.typed",
   "assets/**/*",
   "templates/**/*",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 100

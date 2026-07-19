@@ -1,4 +1,4 @@
-"""Tests for timeline dump CLI flags."""
+"""Tests for the unified timeline-related CLI commands."""
 
 from __future__ import annotations
 
@@ -38,11 +38,9 @@ def test_dump_timeline_cli(sample_db: Path) -> None:
             sys.executable,
             "-m",
             "codegenome",
-            "--workspace",
-            str(sample_db.parent),
+            "timeline",
             "--db-path",
             str(sample_db),
-            "--dump-timeline",
         ],
         check=True,
         capture_output=True,
@@ -71,11 +69,9 @@ def test_dump_changes_cli(sample_db: Path) -> None:
             sys.executable,
             "-m",
             "codegenome",
-            "--workspace",
-            str(sample_db.parent),
+            "changes",
             "--db-path",
             str(sample_db),
-            "--dump-changes",
             "--snapshot-from",
             "1",
             "--snapshot-to",
@@ -89,6 +85,42 @@ def test_dump_changes_cli(sample_db: Path) -> None:
     assert payload["snapshot_from"] == 1
     assert payload["snapshot_to"] == 2
     assert "file:beta.py" in payload["added_nodes"]
+
+
+def test_module_entry_point_uses_the_click_command_group() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "codegenome", "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "Commands:" in result.stdout
+    assert "analyze" in result.stdout
+    assert "timeline" in result.stdout
+    assert "--workspace" not in result.stdout
+
+
+def test_cli_version_uses_the_package_version_source() -> None:
+    result = CliRunner().invoke(cli, ["--version"])
+
+    assert result.exit_code == 0, result.output
+    assert "0.2.0" in result.output
+
+
+def test_all_export_formats_are_available_from_one_interface() -> None:
+    result = CliRunner().invoke(cli, ["export", "--help"])
+
+    assert result.exit_code == 0, result.output
+    for export_format in ("cypher", "graphml", "html", "json", "markdown", "obsidian"):
+        assert export_format in result.output
+
+
+def test_analyze_rejects_ephemeral_mcp_process(tmp_path: Path) -> None:
+    result = CliRunner().invoke(cli, ["analyze", "--mcp", str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "use 'mcp-start' for a standalone server" in result.output
 
 
 def test_db_maintain_cli_prunes_snapshot_history(tmp_path: Path) -> None:

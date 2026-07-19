@@ -1,46 +1,62 @@
 # Changelog
 
-All notable changes to Codegenome are documented in this file.
+This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and uses semantic versioning for published releases.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [Unreleased]
+
+Target release: 0.2.0.
+
+### Added
+
+- Click commands for workspace metrics, timeline history, snapshot changes, churn,
+  and MCP client configuration.
+- Full and multi-format analysis options covering all supported export formats.
+- A tag-validated Trusted Publishing workflow for TestPyPI and PyPI.
+- PEP 639 license metadata, a typed-package marker, and third-party notices.
+
+### Changed
+
+- `python -m codegenome` now invokes the same Click command group as the
+  `codegenome` console script.
+- Package metadata now uses `src/` discovery explicitly and reads the version
+  from `codegenome.version`.
+- Project URLs now point to the canonical `Ogro-Projukti/codegenome` repository.
+
+### Removed
+
+- The parallel top-level argparse interface and its legacy flag combinations.
+  Use explicit subcommands such as `analyze`, `timeline`, `changes`, and `churn`.
 
 ## [0.1.4] - 2026-06-01
 
 ### Added
 
-- **Copyable TUI console outputs** — users can now select text in the log panes and press `Ctrl+C` to copy it to the clipboard.
-- **LAN live graph sharing** — `codegenome evolve --live --lan` binds HTTP and WebSocket to `0.0.0.0` so other devices on the same network can open the live graph. The CLI prints a shareable LAN URL (for example `http://192.168.1.42:8000/graph.html?live=1`).
-- **TUI MCP HTTP mode controls** — the dashboard now includes separate **Start MCP HTTP (Local)** and **Start MCP HTTP (LAN)** buttons so users can intentionally choose localhost-only or LAN exposure.
-- **Git-aware file filtering** — the scanner respects workspace `.gitignore` and `.genomeignore` files, including nested ignore files in subdirectories, negation rules (`!pattern`), and anchored patterns.
-- **TUI workspace info page** — after setting a workspace, the TUI shows tracked folders, file extensions, and discovered `.gitignore` files before you run analyze or evolve.
-- **TUI live-evolve controls** — buttons for **Live Evolve (Local)**, **Live Evolve (LAN)**, and **Quit** to start or stop background processes from the dashboard.
-- **Live graph AI chat** — the HTML graph UI includes an in-browser chat panel backed by OpenAI, Google Gemini, Groq, Ollama (local), and Ollama Cloud. API keys are stored under `.genome/ai-chat.json` and never echoed back to the browser.
-- **Graph context profiles for AI chat** — selectable context sizes (`minimal`, `small`, `medium`, `full`, `max`) control how much neighborhood data is sent with each prompt.
-- **MCP `query_graph` tool** — filter graph nodes by type, file path prefix, or symbol kind.
-- **`codegenome mcp-start --transport` and `--port`** — start the MCP server over stdio (default) or HTTP from the modern CLI and TUI.
-- **`pathspec` dependency** — powers gitignore-compatible pattern matching.
+- **Copyable TUI console outputs** — users can select text in log panes and press `Ctrl+C` to copy it.
+- **LAN live graph sharing** — `codegenome evolve --live --lan` exposes the live graph on a trusted local network.
+- **TUI MCP HTTP mode controls** — separate local and LAN server actions.
+- **Git-aware file filtering** — scanner support for `.gitignore`, `.genomeignore`, negation, and anchored patterns.
+- **TUI workspace info and live-evolve controls**.
+- **Live graph AI chat** with selectable context profiles.
+- **MCP `query_graph` tool** and CLI transport/port options.
+- **`pathspec` dependency** for gitignore-compatible matching.
 
 ### Changed
 
-- Default ignore list always excludes `.git/`, `.venv/`, `node_modules/`, `__pycache__/`, `*.pyc`, `.genome/`, and `.genomeignore` in addition to workspace ignore files.
-- MCP server refreshes the latest timeline snapshot before tool reads so agents always see current graph data after `analyze` or live evolve.
-- `codegenome mcp-start` adds `--lan` for intentional HTTP LAN binding from CLI/TUI workflows.
-- Agent instruction templates (`codegenome rules`) now direct agents to use native MCP tools instead of raw HTTP/curl calls.
+- Runtime artifacts and common generated directories are excluded from scans by default.
+- MCP reads refresh to the latest timeline snapshot.
+- Remote HTTP exposure requires explicit opt-in.
+- Agent templates direct clients to native MCP tools.
 
 ### Fixed
 
-- MCP tool handlers return richer graph intelligence data (dead code, entry points, complexity, churn) with improved filtering for generated assets and public API symbols.
-- Agent rules no longer reference misleading HTTP endpoints that caused agents to `curl` the server instead of using MCP transport.
-- MCP server keeps localhost-only behavior by default and now requires an explicit remote HTTP opt-in (`--allow-remote-http`) for non-loopback hosts.
-- Release lint blockers (unused imports and test lint violations) were resolved so full lint/test/build gates pass before upload.
-- Tree-sitter dependency constraints now support Python 3.12+ installations (including macOS Apple Silicon) while preserving legacy pins for Python 3.11 compatibility (fixes [#1](https://github.com/Ogro-Projukti/codegenome/issues/1)).
-- Updated tree-sitter `Parser` initialization to support both legacy and modern (`>=0.23`) API signatures without breaking runtime.
+- Graph intelligence filtering and MCP tool result quality.
+- Release lint blockers and tree-sitter compatibility across supported Python versions.
 
 ### Documentation
 
-- CLI reference covers `--lan`, TUI live modes, ignore-rule behavior, and MCP transport options.
-- README quick start includes the LAN evolve example.
-- Release notes and upgrade instructions in `docs/release-0.1.4.md`.
+- Added LAN, TUI, ignore-rule, and MCP transport guidance.
+- Added `docs/release-0.1.4.md`.
 
+[Unreleased]: https://github.com/Ogro-Projukti/codegenome/compare/v0.1.4...HEAD
 [0.1.4]: https://github.com/Ogro-Projukti/codegenome/releases/tag/v0.1.4
