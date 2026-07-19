@@ -26,6 +26,8 @@ Target release: 0.2.0.
 - Project URLs now point to the canonical `Ogro-Projukti/codegenome` repository.
 - Runtime dependencies are declared only in `pyproject.toml`; the compatibility
   `requirements.txt` delegates to the `dev` extra under audited security constraints.
+- Tree-sitter runtime and grammar bounds are unified across supported Python versions,
+  including wheel-backed macOS arm64 installs on Python 3.11.
 - Cross-platform CI now runs the complete suite on Linux, macOS, and Windows, treats
   Ruff failures as blocking, and audits a clean `pip install .` environment.
 
