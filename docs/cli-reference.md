@@ -26,6 +26,7 @@ data lives under `<workspace>/.genome/` unless a command accepts `--db-path`.
 | `churn` | Print repository or file churn as JSON |
 | `db-maintain` | Prune snapshots and optionally compact SQLite |
 | `rules` | Generate CodeGenome-managed agent instruction sections |
+| `doctor` | Verify loopback bind defaults and SQLite multiedge integrity |
 | `tui` | Launch the Textual dashboard |
 
 Set global logging before the command, for example
@@ -121,6 +122,18 @@ codegenome db-maintain --path . --retain-snapshots 50 --max-age-days 30 --compac
 
 The newest snapshot is protected. `--compact` runs SQLite `VACUUM`; schedule it
 when no long-running CodeGenome service is using the database.
+
+Run the read-only release-safety checks against the workspace database:
+
+```bash
+codegenome doctor --path .
+codegenome doctor --path . --json
+codegenome doctor --path . --db-path /path/to/codegenome.db
+```
+
+The command exits non-zero if a default or environment-provided bind is not loopback,
+SQLite reports corruption, the edge primary key cannot preserve parallel edges, or the
+latest snapshot's edge metadata differs from its stored row count.
 
 ## Agent rules and TUI
 

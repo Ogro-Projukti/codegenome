@@ -32,8 +32,9 @@ from codegenome.mcp_tools import (
     register_graph_tools,
     register_routes,
 )
+from codegenome.network_utils import LOOPBACK_HOST
 
-DEFAULT_HOST = "127.0.0.1"
+DEFAULT_HOST = LOOPBACK_HOST
 DEFAULT_PORT = 7331
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_TRANSPORT: Literal["http", "stdio"] = "http"

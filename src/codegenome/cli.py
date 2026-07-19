@@ -513,6 +513,36 @@ def metrics(path: Path) -> None:
     click.echo(json.dumps(asdict(WorkspaceMetricsScanner(path.resolve()).scan()), sort_keys=True))
 
 
+@cli.command()
+@click.option(
+    "--path",
+    default=".",
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
+    show_default=True,
+    help="Workspace whose runtime and database should be checked.",
+)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    help="Timeline database path (default: PATH/.genome/codegenome.db).",
+)
+@click.option("--json", "json_output", is_flag=True, help="Emit the report as JSON.")
+def doctor(path: Path, db_path: Path | None, json_output: bool) -> None:
+    """Check loopback network defaults and SQLite multiedge integrity."""
+    from codegenome.doctor import run_doctor
+
+    report = run_doctor(path, db_path)
+    if json_output:
+        click.echo(json.dumps(report.as_dict(), sort_keys=True))
+    else:
+        for check in report.checks:
+            status = "PASS" if check.passed else "FAIL"
+            click.echo(f"[{status}] {check.name}: {check.detail}")
+        click.echo("Doctor result: PASS" if report.passed else "Doctor result: FAIL")
+    if not report.passed:
+        raise click.exceptions.Exit(1)
+
+
 @cli.command(name="install-mcp")
 @click.option(
     "--db-path",

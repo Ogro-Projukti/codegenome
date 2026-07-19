@@ -5,6 +5,15 @@ from __future__ import annotations
 import socket
 
 
+LOOPBACK_HOST = "127.0.0.1"
+WILDCARD_HOST = "0.0.0.0"
+
+
+def resolve_bind_host(*, allow_lan: bool = False) -> str:
+    """Return the explicit bind address for the requested network boundary."""
+    return WILDCARD_HOST if allow_lan else LOOPBACK_HOST
+
+
 def get_lan_ip() -> str:
     """Return the primary LAN IPv4 address for this machine.
 
@@ -16,10 +25,10 @@ def get_lan_ip() -> str:
             sock.connect(("8.8.8.8", 80))
             return sock.getsockname()[0]
     except OSError:
-        return "127.0.0.1"
+        return LOOPBACK_HOST
 
 
-def is_port_available(port: int, host: str = "127.0.0.1") -> bool:
+def is_port_available(port: int, host: str = LOOPBACK_HOST) -> bool:
     """Return True if ``port`` can be bound on ``host`` right now.
 
     The probe binds a throwaway socket without ``SO_REUSEADDR`` so that a port
@@ -42,7 +51,7 @@ def is_port_available(port: int, host: str = "127.0.0.1") -> bool:
 
 
 def find_free_port(
-    preferred: int, host: str = "127.0.0.1", *, attempts: int = 50
+    preferred: int, host: str = LOOPBACK_HOST, *, attempts: int = 50
 ) -> int:
     """Return a bindable port, preferring ``preferred`` then scanning upward.
 
@@ -57,7 +66,7 @@ def find_free_port(
     Raises:
         OSError: If no free port is found within ``attempts``.
     """
-    probe_host = "127.0.0.1" if host in ("", "0.0.0.0") else host
+    probe_host = LOOPBACK_HOST if host in ("", WILDCARD_HOST) else host
     for candidate in range(preferred, preferred + max(1, attempts)):
         if is_port_available(candidate, probe_host):
             return candidate

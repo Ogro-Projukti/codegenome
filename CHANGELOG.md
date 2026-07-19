@@ -11,6 +11,8 @@ Target release: 0.2.0.
 
 - Click commands for workspace metrics, timeline history, snapshot changes, churn,
   and MCP client configuration.
+- A read-only `codegenome doctor` release-safety command for loopback bind defaults,
+  SQLite health, multiedge schema, snapshot row counts, and duplicate-edge round trips.
 - Full and multi-format analysis options covering all supported export formats.
 - A tag-validated Trusted Publishing workflow for TestPyPI and PyPI.
 - PEP 639 license metadata, a typed-package marker, and third-party notices.
@@ -22,6 +24,25 @@ Target release: 0.2.0.
 - Package metadata now uses `src/` discovery explicitly and reads the version
   from `codegenome.version`.
 - Project URLs now point to the canonical `Ogro-Projukti/codegenome` repository.
+- Runtime dependencies are declared only in `pyproject.toml`; the compatibility
+  `requirements.txt` delegates to the `dev` extra under audited security constraints.
+- Cross-platform CI now runs the complete suite on Linux, macOS, and Windows, treats
+  Ruff failures as blocking, and audits a clean `pip install .` environment.
+
+### Fixed
+
+- **SEC-01:** Live HTTP, WebSocket, and MCP services now default to explicit loopback
+  binds; wildcard exposure requires a deliberate LAN/remote opt-in.
+- **BUG-02:** Timeline persistence now assigns stable occurrence-aware edge keys, so
+  parallel and byte-identical multiedges survive full and patch SQLite round trips.
+- **BUG-03:** Agent rule generation now updates atomic marker-delimited managed blocks,
+  preserves manual text, rejects malformed markers, and writes a recovery backup.
+
+### Security
+
+- **SEC-02:** FastMCP, MCP, and pytest resolve to audited release-floor versions with
+  bounded ranges and release constraints; CI blocks publishing on vulnerability audit
+  failures.
 
 ### Removed
 

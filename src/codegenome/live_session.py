@@ -214,7 +214,9 @@ class LiveSession:
 
     @property
     def bind_host(self) -> str:
-        return "0.0.0.0" if self._config.lan else "127.0.0.1"
+        from codegenome.network_utils import resolve_bind_host
+
+        return resolve_bind_host(allow_lan=self._config.lan)
 
     def resolve_ports(self) -> None:
         """Pick free HTTP/WS ports, scanning upward from the configured ones.

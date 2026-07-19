@@ -9,6 +9,8 @@ from typing import Any, Set
 
 import websockets
 
+from codegenome.network_utils import LOOPBACK_HOST
+
 from codegenome.serializers.genome_provider import (
     filter_graph_delta_for_module,
     module_id_for_file,
@@ -30,7 +32,7 @@ class ClientSubscription:
 class LiveGraphServer:
     """Manage WebSocket connections and broadcast real-time graph updates."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 8765):
+    def __init__(self, host: str = LOOPBACK_HOST, port: int = 8765):
         """Initialize the LiveGraphServer.
 
         Args:
