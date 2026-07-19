@@ -8,6 +8,8 @@ import pytest
 
 from codegenome.builder import GraphBuilder
 from codegenome.graph_api import create_graph
+from codegenome.graph_store import GraphStoreError
+from codegenome.intelligence import GraphIntelligence
 from codegenome.mcp_server import GraphService, ServerConfig, create_server
 from codegenome.parser import ParseResult, ParsedImport, ParsedSymbol
 from codegenome.scanner import FileRecord, ScanResult
@@ -18,6 +20,7 @@ from codegenome.serializers.genome_provider import (
     module_id_for_file,
 )
 from codegenome.serializers.nucleotide_mapper import NucleotideBase
+from codegenome.snapshot_metrics import SnapshotMetrics
 from codegenome.timeline import GraphTimeline
 
 
@@ -168,7 +171,11 @@ def sample_db(tmp_path: Path) -> Path:
 
     db_path = tmp_path / "test.db"
     timeline = GraphTimeline(db_path)
-    timeline.record_snapshot(graph, label="baseline")
+    snapshot_id = timeline.record_snapshot(graph, label="baseline")
+    timeline.metrics_store.persist_snapshot(
+        snapshot_id,
+        SnapshotMetrics(report=GraphIntelligence(graph).analyze()),
+    )
     timeline.close()
     return db_path
 
@@ -197,5 +204,58 @@ def test_graph_store_exposes_genome_graph(sample_db: Path) -> None:
         )
         assert structure is not None
         assert structure.files[0].path == "core/main.py"
+    finally:
+        service.shutdown()
+
+
+def test_bounded_graph_store_projects_genome_without_full_snapshot_load(
+    sample_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reference_timeline = GraphTimeline(sample_db)
+    try:
+        reference_graph = reference_timeline.load_snapshot(1)
+        reference_metrics = reference_timeline.metrics_store.load_snapshot(1)
+        assert reference_metrics is not None
+        reference_summary = GenomeProvider(
+            reference_graph,
+            intelligence_report=reference_metrics.report,
+        ).build_summary(snapshot_id=1)
+    finally:
+        reference_timeline.close()
+
+    config = ServerConfig(
+        host="127.0.0.1",
+        port=7331,
+        db_path=sample_db,
+        timeout_seconds=5.0,
+        log_level="INFO",
+        transport="http",
+        memory_bounded=True,
+    )
+    service = GraphService(config)
+    service.startup()
+    try:
+        assert service.store.graph.number_of_nodes() == 0
+        assert service.store._timeline is not None
+
+        def fail_full_load(_snapshot_id: int):
+            raise AssertionError("bounded genome route attempted a full snapshot load")
+
+        monkeypatch.setattr(service.store._timeline, "load_snapshot", fail_full_load)
+
+        summary = service.run(service.store.get_genome_summary)
+        assert summary == reference_summary
+        assert summary.snapshot_id == service.store.snapshot_id
+        assert summary.modules[0].module_id == "core"
+        assert summary.modules[0].coverage_available is False
+
+        structure = service.run(service.store.get_genome_structure, "core")
+        assert structure is not None
+        assert structure.files[0].path == "core/main.py"
+        assert service.store.graph.number_of_nodes() == 0
+
+        with pytest.raises(GraphStoreError, match="memory-bounded"):
+            service.store.graph_for_genome()
     finally:
         service.shutdown()

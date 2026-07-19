@@ -37,7 +37,11 @@ Build or incrementally update the knowledge graph.
 ```bash
 codegenome analyze .
 codegenome analyze /path/to/my-app
+codegenome analyze --memory-bounded --retain-snapshots 100 .
 ```
+
+Analysis retains the newest 100 snapshots by default. Use `--retain-snapshots`
+to choose another count and `--retention-days` to add an age limit.
 
 ### `export`
 
@@ -60,6 +64,7 @@ Run a live observer with a browser-based graph UI. Watches `.py` file changes an
 codegenome evolve .
 codegenome evolve --live .
 codegenome evolve --live --lan .
+codegenome evolve --live --memory-bounded --retain-snapshots 100 .
 ```
 
 With `--live`, a WebSocket server broadcasts graph updates. The UI is served at `http://localhost:8000/graph.html?live=1`.
@@ -68,13 +73,27 @@ Without `--lan`, HTTP and WebSocket bind explicitly to loopback (`127.0.0.1`). W
 
 ### `mcp-start`
 
-Start the MCP server over **stdio** for the given workspace.
+Start the MCP server over stdio (default) or loopback HTTP for the given workspace.
 
 ```bash
 codegenome mcp-start .
+codegenome mcp-start --transport http --port 7331 --memory-bounded .
 ```
 
-For HTTP MCP on port `7331`, use the [legacy CLI](#mcp-via-legacy-cli) or [standalone MCP server](mcp-integration.md#standalone-mcp-server).
+HTTP binds to `127.0.0.1` unless `--lan` is explicitly supplied.
+
+### `db-maintain`
+
+Prune historical snapshots transactionally and optionally return unused SQLite
+pages to disk:
+
+```bash
+codegenome db-maintain --path . --retain-snapshots 100
+codegenome db-maintain --path . --retain-snapshots 50 --max-age-days 30 --compact
+```
+
+The latest snapshot is always protected. `--compact` runs SQLite `VACUUM`, so
+schedule it when no long-running CodeGenome service is using the database.
 
 ### `rules`
 

@@ -74,7 +74,7 @@ def test_circular_import_targets_flags_g_alert() -> None:
     assert "circular_import" in sequence.alerts
 
 
-def test_health_score_uses_mocked_coverage_by_default() -> None:
+def test_health_score_marks_missing_coverage_as_unavailable() -> None:
     solo = ParseResult(path="solo.py", language="python")
     solo.symbols = [
         ParsedSymbol(
@@ -89,7 +89,8 @@ def test_health_score_uses_mocked_coverage_by_default() -> None:
     graph, _ = _build_graph({"solo.py": solo})
     health = HealthAggregator(graph).compute_module_health("solo.py")
 
-    assert health.test_coverage == HealthAggregator.DEFAULT_COVERAGE
+    assert health.test_coverage is None
+    assert health.coverage_available is False
     assert health.zombie_node_rate == 0.0
     assert 0.0 <= health.health_score <= 1.0
 
@@ -104,4 +105,19 @@ def test_health_score_accepts_custom_coverage() -> None:
     health = aggregator.compute_module_health("solo.py")
 
     assert health.test_coverage == 1.0
+    assert health.coverage_available is True
     assert health.health_score >= HealthAggregator(graph).compute_module_health("solo.py").health_score
+
+
+def test_missing_coverage_is_excluded_from_health_weighting() -> None:
+    parsed = ParseResult(path="solo.py", language="python")
+    graph, _registry = _build_graph({"solo.py": parsed})
+
+    without_coverage = HealthAggregator(graph).compute_module_health("solo.py")
+    zero_coverage = HealthAggregator(
+        graph,
+        test_coverage={"solo.py": 0.0},
+    ).compute_module_health("solo.py")
+
+    assert without_coverage.health_score == 1.0
+    assert zero_coverage.health_score == 0.75

@@ -22,9 +22,9 @@ from codegenome.mcp_runtime import (
     LOG,
     MCP_CLIENT_CONTEXT,
     MCP_TRANSPORT_CONTEXT,
-    error,
+    error as error,
     log_event,
-    ok,
+    ok as ok,
 )
 from codegenome.mcp_tools import (
     ClientContextMiddleware,

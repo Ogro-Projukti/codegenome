@@ -751,10 +751,39 @@ class GraphStore:
         return self._timeline
 
     def graph_for_genome(self) -> Graph:
-        """Return the graph used for progressive-disclosure genome endpoints."""
+        """Return the resident graph for legacy genome consumers.
+
+        Memory-bounded callers must use the SQL-projected ``get_genome_*``
+        methods; loading a complete snapshot here would violate that contract.
+        """
         if self._memory_bounded:
-            return self._load_full_graph()
+            raise GraphStoreError(
+                "Full genome graph is unavailable in memory-bounded mode; "
+                "use get_genome_summary/get_genome_graph/get_genome_structure"
+            )
         return self._graph
+
+    def get_genome_summary(self) -> Any:
+        """Build the genome overview without a full load in bounded mode."""
+        return self._genome_provider().build_summary(snapshot_id=self._snapshot_id)
+
+    def get_genome_graph(self, module_id: str) -> Any:
+        """Build a module helix without loading unrelated modules."""
+        return self._genome_provider().build_helix_graph(module_id)
+
+    def get_genome_structure(self, module_id: str) -> Any:
+        """Build a module structure tree without loading unrelated modules."""
+        return self._genome_provider().build_structure_tree(module_id)
+
+    def _genome_provider(self) -> Any:
+        if self._memory_bounded and self._snapshot_id is not None:
+            from codegenome.serializers.genome_sql_provider import SqlGenomeProvider
+
+            return SqlGenomeProvider(self._require_timeline(), self._snapshot_id)
+
+        from codegenome.serializers.genome_provider import GenomeProvider
+
+        return GenomeProvider(self._graph)
 
     def _load_full_graph(self) -> Graph:
         timeline = self._require_timeline()

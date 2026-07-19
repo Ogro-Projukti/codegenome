@@ -46,6 +46,18 @@ class SnapshotInfo:
     edge_count: int
 
 
+@dataclass(frozen=True)
+class SnapshotRetentionResult:
+    """Outcome of a transactional snapshot-retention pass."""
+
+    deleted_snapshot_ids: tuple[int, ...]
+    snapshots_before: int
+    snapshots_after: int
+    database_bytes_before: int
+    database_bytes_after: int
+    compacted: bool = False
+
+
 @dataclass
 class GraphDelta:
     """Structural diff between two snapshots.
@@ -102,6 +114,7 @@ class GraphTimeline:
         # MCP tool handlers run on worker threads; allow cross-thread reads/writes.
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA foreign_keys = ON")
         self._initialize_schema()
         self._gdr_store = GDRStore(self._conn)
         self._gdr_store.initialize_schema()
@@ -472,6 +485,56 @@ class GraphTimeline:
                     break
         return matches
 
+    def file_paths_for_module(self, snapshot_id: int, module_id: str) -> set[str]:
+        """Return files directly contained by one genome module.
+
+        Module membership matches ``module_id_for_file``: nested directories are
+        separate modules, and ``__root__`` contains only files at repository root.
+        """
+        normalized = module_id.replace("\\", "/").strip("/")
+        if self.has_node_file_index(snapshot_id):
+            if normalized == "__root__":
+                rows = self._conn.execute(
+                    """
+                    SELECT DISTINCT file_path
+                    FROM graph_node_files
+                    WHERE snapshot_id = ? AND instr(file_path, '/') = 0
+                    ORDER BY file_path
+                    """,
+                    (snapshot_id,),
+                )
+            else:
+                escaped = (
+                    normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                )
+                rows = self._conn.execute(
+                    """
+                    SELECT DISTINCT file_path
+                    FROM graph_node_files
+                    WHERE snapshot_id = ?
+                      AND file_path LIKE ? ESCAPE '\\'
+                      AND instr(substr(file_path, ?), '/') = 0
+                    ORDER BY file_path
+                    """,
+                    (snapshot_id, f"{escaped}/%", len(normalized) + 2),
+                )
+            return {str(row["file_path"]) for row in rows}
+
+        matches: set[str] = set()
+        rows = self._conn.execute(
+            "SELECT node_id, attrs_json FROM graph_nodes WHERE snapshot_id = ?",
+            (snapshot_id,),
+        )
+        for row in rows:
+            attrs = json.loads(row["attrs_json"])
+            if attrs.get("node_type") != "file" or not attrs.get("file_path"):
+                continue
+            file_path = str(attrs["file_path"]).replace("\\", "/").strip("/")
+            parent = file_path.rsplit("/", 1)[0] if "/" in file_path else "__root__"
+            if parent == normalized:
+                matches.add(file_path)
+        return matches
+
     def search_nodes(
         self,
         snapshot_id: int,
@@ -670,6 +733,114 @@ class GraphTimeline:
             )
             for row in rows
         ]
+
+    def prune_snapshots(
+        self,
+        *,
+        max_snapshots: int | None = None,
+        max_age_seconds: float | None = None,
+        protected_snapshot_ids: set[int] | None = None,
+        now: float | None = None,
+        compact: bool = False,
+    ) -> SnapshotRetentionResult:
+        """Delete expired snapshots and all dependent rows transactionally.
+
+        When both count and age limits are supplied, a snapshot must satisfy
+        both to be retained. The newest snapshot and explicitly protected IDs
+        are never deleted. ``compact=True`` runs ``VACUUM`` after the committed
+        deletion transaction so reclaimed pages are returned to the filesystem.
+        """
+        if max_snapshots is None and max_age_seconds is None and not compact:
+            raise ValueError("A retention limit or compact=True is required")
+        if max_snapshots is not None and max_snapshots < 1:
+            raise ValueError("max_snapshots must be at least 1")
+        if max_age_seconds is not None and max_age_seconds < 0:
+            raise ValueError("max_age_seconds must be non-negative")
+
+        snapshots = self.list_snapshots()
+        before_bytes = self.database_size_bytes()
+        protected = set(protected_snapshot_ids or set())
+        if snapshots:
+            protected.add(snapshots[-1].snapshot_id)
+
+        candidates: set[int] = set()
+        if max_snapshots is not None and len(snapshots) > max_snapshots:
+            candidates.update(
+                snapshot.snapshot_id for snapshot in snapshots[:-max_snapshots]
+            )
+        if max_age_seconds is not None:
+            cutoff = (time.time() if now is None else now) - max_age_seconds
+            candidates.update(
+                snapshot.snapshot_id
+                for snapshot in snapshots
+                if snapshot.created_at < cutoff
+            )
+        candidates.difference_update(protected)
+        deleted_ids = tuple(sorted(candidates))
+
+        if deleted_ids:
+            existing_tables = {
+                str(row["name"])
+                for row in self._conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+            dependent_tables = (
+                "gdr_consumes",
+                "gdr_provides",
+                "gdr_files",
+                "snapshot_metrics",
+                "graph_node_files",
+                "graph_edges",
+                "graph_nodes",
+            )
+            try:
+                self._conn.execute("BEGIN IMMEDIATE")
+                for offset in range(0, len(deleted_ids), 500):
+                    batch = deleted_ids[offset : offset + 500]
+                    placeholders = ", ".join("?" for _ in batch)
+                    for table in dependent_tables:
+                        if table in existing_tables:
+                            self._conn.execute(
+                                f"DELETE FROM {table} WHERE snapshot_id IN ({placeholders})",
+                                batch,
+                            )
+                    self._conn.execute(
+                        f"DELETE FROM snapshots WHERE snapshot_id IN ({placeholders})",
+                        batch,
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
+        if compact:
+            self.compact_database()
+        else:
+            self._conn.execute("PRAGMA optimize")
+        return SnapshotRetentionResult(
+            deleted_snapshot_ids=deleted_ids,
+            snapshots_before=len(snapshots),
+            snapshots_after=len(snapshots) - len(deleted_ids),
+            database_bytes_before=before_bytes,
+            database_bytes_after=self.database_size_bytes(),
+            compacted=compact,
+        )
+
+    def compact_database(self) -> None:
+        """Rebuild the SQLite file so free pages are returned to disk."""
+        self._conn.commit()
+        self._conn.execute("VACUUM")
+        self._conn.execute("PRAGMA optimize")
+
+    def database_size_bytes(self) -> int:
+        """Return the on-disk size of the database and SQLite sidecar files."""
+        candidates = (
+            self.db_path,
+            Path(f"{self.db_path}-wal"),
+            Path(f"{self.db_path}-shm"),
+        )
+        return sum(path.stat().st_size for path in candidates if path.exists())
 
     def compute_delta(self, snapshot_from: int, snapshot_to: int) -> GraphDelta:
         """Compute the structural differences between two snapshots.

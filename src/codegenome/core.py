@@ -35,7 +35,6 @@ from codegenome.engine import (
     ScanService,
     SurgicalUpdateHandler,
     WatchService,
-    _RebuildHandler,
 )
 
 __all__ = [

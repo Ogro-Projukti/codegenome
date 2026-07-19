@@ -5,6 +5,7 @@ from __future__ import annotations
 from codegenome.gdr_store import GDRBackedRegistry
 from codegenome.intelligence import IntelligenceReport
 from codegenome.snapshot_metrics import SnapshotMetrics
+from codegenome.timeline import SnapshotRetentionResult
 from codegenome.working_set import WorkingSetGraph
 
 from codegenome.engine.context import EngineContext
@@ -101,3 +102,24 @@ class PersistenceService:
             )
             return
         gdr_store.persist_snapshot(snapshot_id, self.ctx.registry)
+
+    def enforce_snapshot_retention(self) -> SnapshotRetentionResult | None:
+        """Apply configured count/age limits after a snapshot is fully persisted."""
+        config = self.ctx.config
+        max_count = config.snapshot_retention_count
+        max_age_seconds = (
+            config.snapshot_retention_days * 24 * 60 * 60
+            if config.snapshot_retention_days is not None
+            else None
+        )
+        if max_count is None and max_age_seconds is None:
+            return None
+        return self.ctx.timeline.prune_snapshots(
+            max_snapshots=max_count,
+            max_age_seconds=max_age_seconds,
+            protected_snapshot_ids=(
+                {self.ctx.active_snapshot_id}
+                if self.ctx.active_snapshot_id is not None
+                else None
+            ),
+        )

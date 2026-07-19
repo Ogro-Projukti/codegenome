@@ -24,8 +24,27 @@ def cli():
     type=int,
     help="Maximum files resident in memory when --memory-bounded is enabled.",
 )
+@click.option(
+    "--retain-snapshots",
+    default=100,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Automatically retain only the newest snapshot count after analysis.",
+)
+@click.option(
+    "--retention-days",
+    default=None,
+    type=click.FloatRange(min=0.0),
+    help="Also remove snapshots older than this many days.",
+)
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
-def analyze(path: str, memory_bounded: bool, max_working_files: int):
+def analyze(
+    path: str,
+    memory_bounded: bool,
+    max_working_files: int,
+    retain_snapshots: int,
+    retention_days: float | None,
+):
     """Triggers the tree-sitter scan, builds the ASTs, and saves to the SQLite graph_store.
 
     Args:
@@ -38,6 +57,8 @@ def analyze(path: str, memory_bounded: bool, max_working_files: int):
         export_formats=("json",),
         memory_bounded=memory_bounded,
         max_working_files=max(1, max_working_files),
+        snapshot_retention_count=retain_snapshots,
+        snapshot_retention_days=retention_days,
     )
     engine = CodeGenomeEngine(config)
 
@@ -186,8 +207,29 @@ def mcp_start(path: str, transport: str, port: int, lan: bool, memory_bounded: b
     type=int,
     help="Maximum files resident in memory when --memory-bounded is enabled.",
 )
+@click.option(
+    "--retain-snapshots",
+    default=100,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Automatically retain only the newest snapshot count while evolving.",
+)
+@click.option(
+    "--retention-days",
+    default=None,
+    type=click.FloatRange(min=0.0),
+    help="Also remove snapshots older than this many days.",
+)
 @click.argument("path", default=".", type=click.Path(exists=True, file_okay=False))
-def evolve(path: str, live: bool, lan: bool, memory_bounded: bool, max_working_files: int):
+def evolve(
+    path: str,
+    live: bool,
+    lan: bool,
+    memory_bounded: bool,
+    max_working_files: int,
+    retain_snapshots: int,
+    retention_days: float | None,
+):
     """Start real-time architectural observer and open live UI.
 
     Args:
@@ -204,10 +246,69 @@ def evolve(path: str, live: bool, lan: bool, memory_bounded: bool, max_working_f
             lan=lan,
             memory_bounded=memory_bounded,
             max_working_files=max(1, max_working_files),
+            snapshot_retention_count=retain_snapshots,
+            snapshot_retention_days=retention_days,
         ),
         emit=click.echo,
     )
     session.serve()
+
+
+@cli.command(name="db-maintain")
+@click.option(
+    "--path",
+    default=".",
+    type=click.Path(exists=True, file_okay=False),
+    help="Workspace whose .genome/codegenome.db should be maintained.",
+)
+@click.option(
+    "--retain-snapshots",
+    default=100,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Retain at most this many newest snapshots.",
+)
+@click.option(
+    "--max-age-days",
+    default=None,
+    type=click.FloatRange(min=0.0),
+    help="Also remove snapshots older than this many days.",
+)
+@click.option(
+    "--compact/--no-compact",
+    default=False,
+    show_default=True,
+    help="VACUUM the database after pruning to return free pages to disk.",
+)
+def db_maintain(
+    path: str,
+    retain_snapshots: int,
+    max_age_days: float | None,
+    compact: bool,
+) -> None:
+    """Prune snapshot history transactionally and optionally compact SQLite."""
+    from codegenome.timeline import GraphTimeline
+
+    db_path = Path(path).resolve() / ".genome" / "codegenome.db"
+    if not db_path.exists():
+        raise click.ClickException(f"No CodeGenome database found at {db_path}")
+    timeline = GraphTimeline(db_path)
+    try:
+        result = timeline.prune_snapshots(
+            max_snapshots=retain_snapshots,
+            max_age_seconds=(
+                max_age_days * 24 * 60 * 60 if max_age_days is not None else None
+            ),
+            compact=compact,
+        )
+    finally:
+        timeline.close()
+    reclaimed = result.database_bytes_before - result.database_bytes_after
+    click.echo(
+        f"Snapshots: {result.snapshots_before} -> {result.snapshots_after}; "
+        f"deleted {len(result.deleted_snapshot_ids)}; "
+        f"disk reclaimed {max(0, reclaimed):,} bytes."
+    )
 
 
 @cli.command()

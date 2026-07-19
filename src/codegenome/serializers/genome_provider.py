@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any
 
-from codegenome.builder import file_node_id
 from codegenome.graph_api import Graph
+from codegenome.intelligence import IntelligenceReport
 from codegenome.parser.types import ParsedCall, ParsedSymbol
 from codegenome.serializers.genome_schemas import (
     ClassNode,
@@ -70,9 +70,19 @@ def list_module_ids(graph: Graph) -> list[str]:
 class GenomeProvider:
     """Serialize graph slices for karyotype, helix, and structure views."""
 
-    def __init__(self, graph: Graph, *, test_coverage: dict[str, float] | None = None) -> None:
+    def __init__(
+        self,
+        graph: Graph,
+        *,
+        test_coverage: dict[str, float] | None = None,
+        intelligence_report: IntelligenceReport | None = None,
+    ) -> None:
         self.graph = graph
-        self._aggregator = HealthAggregator(graph, test_coverage=test_coverage)
+        self._aggregator = HealthAggregator(
+            graph,
+            test_coverage=test_coverage,
+            intelligence_report=intelligence_report,
+        )
 
     def build_summary(self, *, snapshot_id: int | None = None) -> GenomeSummaryResponse:
         """Return top-level module summaries only."""
@@ -85,15 +95,18 @@ class GenomeProvider:
 
         for module_id in sorted(files_by_module):
             file_paths = files_by_module[module_id]
-            health_scores = [
-                self._aggregator.compute_module_health(path).health_score for path in file_paths
+            health_reports = [
+                self._aggregator.compute_module_health(path) for path in file_paths
             ]
+            health_scores = [report.health_score for report in health_reports]
             average_health = sum(health_scores) / len(health_scores) if health_scores else 1.0
             modules.append(
                 ModuleSummary(
                     module_id=module_id,
                     gene_count=len(file_paths),
                     health_score=round(average_health, 4),
+                    coverage_available=bool(health_reports)
+                    and all(report.coverage_available for report in health_reports),
                     community_id=community_by_module.get(module_id),
                     base_counts=base_counts_by_module.get(module_id, {}),
                 )
@@ -177,9 +190,11 @@ class GenomeProvider:
         edges: list[HelixEdge] = []
         alerts: set[str] = set()
         health_scores: list[float] = []
+        coverage_flags: list[bool] = []
 
         for file_path in file_paths:
             symbols, calls, import_edges, import_attrs = self._extract_file_graph_data(file_path)
+            health = self._aggregator.compute_module_health(file_path)
             sequence = self._aggregator.build_sequence(
                 file_path,
                 symbols,
@@ -188,6 +203,7 @@ class GenomeProvider:
                 import_node_attrs=import_attrs,
             )
             health_scores.append(sequence.health_score)
+            coverage_flags.append(health.coverage_available)
             alerts.update(sequence.alerts)
 
             for entry in sequence.sequence:
@@ -249,6 +265,7 @@ class GenomeProvider:
             nodes=nodes,
             edges=edges,
             health_score=round(average_health, 4),
+            coverage_available=bool(coverage_flags) and all(coverage_flags),
             alerts=sorted(alerts),
         )
 
@@ -312,6 +329,7 @@ class GenomeProvider:
                         module_id=match.module_id,
                         gene_count=match.gene_count,
                         health_score=match.health_score,
+                        coverage_available=match.coverage_available,
                         community_id=match.community_id,
                         base_counts=match.base_counts,
                     )

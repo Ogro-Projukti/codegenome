@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from codegenome.builder import file_node_id
 from codegenome.graph_api import Graph
+from codegenome.intelligence import IntelligenceReport
 from codegenome.intelligence.projections import FileGraphProjector
 from codegenome.intelligence.structural import CircularDependencyAnalyzer, DeadCodeAnalyzer
 from codegenome.intelligence.context import AnalysisContext
@@ -27,7 +28,8 @@ class ModuleHealthReport(BaseModel):
     module_path: str
     health_score: float = Field(ge=0.0, le=1.0)
     alerts: list[str] = Field(default_factory=list)
-    test_coverage: float = Field(ge=0.0, le=1.0)
+    test_coverage: float | None = Field(default=None, ge=0.0, le=1.0)
+    coverage_available: bool
     circular_dep_rate: float = Field(ge=0.0, le=1.0)
     zombie_node_rate: float = Field(ge=0.0, le=1.0)
     normalized_complexity: float = Field(ge=0.0, le=1.0)
@@ -46,7 +48,6 @@ class HealthWeights:
 class HealthAggregator:
     """Compute per-module health scores and circular-import (G!) alerts."""
 
-    DEFAULT_COVERAGE = 0.85
     MAX_COMPLEXITY = 50.0
 
     def __init__(
@@ -55,10 +56,12 @@ class HealthAggregator:
         *,
         test_coverage: dict[str, float] | None = None,
         weights: HealthWeights | None = None,
+        intelligence_report: IntelligenceReport | None = None,
     ) -> None:
         self.graph = graph
         self.test_coverage = test_coverage or {}
         self.weights = weights or HealthWeights()
+        self.intelligence_report = intelligence_report
         self._ctx = AnalysisContext(graph)
         self._files_in_cycles: set[str] | None = None
         self._dead_symbol_ids: set[str] | None = None
@@ -66,6 +69,14 @@ class HealthAggregator:
     def files_in_cycles(self) -> set[str]:
         """Return file node IDs participating in circular import cycles."""
         if self._files_in_cycles is not None:
+            return self._files_in_cycles
+
+        if self.intelligence_report is not None:
+            self._files_in_cycles = {
+                file_id
+                for cycle in self.intelligence_report.circular_dependencies
+                for file_id in cycle
+            }
             return self._files_in_cycles
 
         file_graph = FileGraphProjector(self.graph).file_import_graph()
@@ -103,6 +114,9 @@ class HealthAggregator:
         """Return symbol node IDs classified as dead code (zombie nodes)."""
         if self._dead_symbol_ids is not None:
             return self._dead_symbol_ids
+        if self.intelligence_report is not None:
+            self._dead_symbol_ids = set(self.intelligence_report.dead_code)
+            return self._dead_symbol_ids
         analyzer = DeadCodeAnalyzer(self._ctx)
         self._dead_symbol_ids = set(analyzer.detect())
         return self._dead_symbol_ids
@@ -131,19 +145,20 @@ class HealthAggregator:
         circular_factor = 1.0 - circular_rate
         zombie_factor = 1.0 - zombie_rate
         w = self.weights
-        health_score = (
-            w.coverage * coverage
-            + w.circular * circular_factor
-            + w.zombie * zombie_factor
-            + w.complexity * complexity_score
+        health_score = weighted_health_score(
+            coverage=coverage,
+            circular_factor=circular_factor,
+            zombie_factor=zombie_factor,
+            complexity_factor=complexity_score,
+            weights=w,
         )
-        health_score = max(0.0, min(1.0, health_score))
 
         return ModuleHealthReport(
             module_path=module_path,
             health_score=round(health_score, 4),
             alerts=alerts,
-            test_coverage=round(coverage, 4),
+            test_coverage=round(coverage, 4) if coverage is not None else None,
+            coverage_available=coverage is not None,
             circular_dep_rate=round(circular_rate, 4),
             zombie_node_rate=round(zombie_rate, 4),
             normalized_complexity=round(complexity_score, 4),
@@ -175,10 +190,10 @@ class HealthAggregator:
             }
         )
 
-    def _coverage_for(self, module_path: str) -> float:
+    def _coverage_for(self, module_path: str) -> float | None:
         if module_path in self.test_coverage:
             return max(0.0, min(1.0, self.test_coverage[module_path]))
-        return self.DEFAULT_COVERAGE
+        return None
 
     def _symbols_for_module(self, module_path: str) -> list[str]:
         return [
@@ -222,3 +237,32 @@ class HealthAggregator:
             cycles.append(member_names)
         cycles.sort(key=lambda cycle: (len(cycle), cycle))
         return cycles
+
+
+def weighted_health_score(
+    *,
+    coverage: float | None,
+    circular_factor: float,
+    zombie_factor: float,
+    complexity_factor: float,
+    weights: HealthWeights | None = None,
+) -> float:
+    """Combine only health factors backed by real data.
+
+    Coverage is deliberately omitted when unavailable instead of substituting a
+    synthetic value. The remaining configured weights are normalized so the
+    score keeps its 0.0-1.0 contract without implying measured coverage.
+    """
+    resolved = weights or HealthWeights()
+    factors = [
+        (resolved.circular, circular_factor),
+        (resolved.zombie, zombie_factor),
+        (resolved.complexity, complexity_factor),
+    ]
+    if coverage is not None:
+        factors.append((resolved.coverage, coverage))
+    total_weight = sum(weight for weight, _value in factors)
+    if total_weight <= 0:
+        return 0.0
+    score = sum(weight * value for weight, value in factors) / total_weight
+    return max(0.0, min(1.0, score))

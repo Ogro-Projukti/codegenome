@@ -58,23 +58,25 @@ def handle_genome_structure_get(
 def register_genome_routes(mcp: Any, service: Any) -> None:
     """Register genome REST routes on a FastMCP server."""
 
-    def _graph_for_request() -> Any:
-        return service.run(service.store.graph_for_genome)
-
     @mcp.custom_route("/genome", methods=["GET"], include_in_schema=False)
     async def genome_summary(_request: Request) -> JSONResponse:
-        graph = _graph_for_request()
-        snapshot_id = service.store.snapshot_id
-        return handle_genome_get(graph, snapshot_id=snapshot_id)
+        payload = service.run(service.store.get_genome_summary)
+        return _json_response(payload)
 
     @mcp.custom_route("/genome/{module_id}/graph", methods=["GET"], include_in_schema=False)
     async def genome_graph(_request: Request) -> JSONResponse:
         module_id = _request.path_params["module_id"]
-        graph = _graph_for_request()
-        return handle_genome_graph_get(graph, module_id)
+        decoded = _decode_module_id(module_id)
+        payload = service.run(service.store.get_genome_graph, decoded)
+        if payload is None:
+            return JSONResponse({"error": f"Unknown module: {decoded}"}, status_code=404)
+        return _json_response(payload)
 
     @mcp.custom_route("/genome/{module_id}/structure", methods=["GET"], include_in_schema=False)
     async def genome_structure(_request: Request) -> JSONResponse:
         module_id = _request.path_params["module_id"]
-        graph = _graph_for_request()
-        return handle_genome_structure_get(graph, module_id)
+        decoded = _decode_module_id(module_id)
+        payload = service.run(service.store.get_genome_structure, decoded)
+        if payload is None:
+            return JSONResponse({"error": f"Unknown module: {decoded}"}, status_code=404)
+        return _json_response(payload)

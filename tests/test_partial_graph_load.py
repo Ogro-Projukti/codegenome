@@ -223,3 +223,29 @@ def test_memory_bounded_engine_keeps_empty_graph_after_build(
         assert engine._working_set.loaded_files == set()
     finally:
         engine.close()
+
+
+def test_engine_enforces_snapshot_retention_after_persistence(
+    two_file_graph: tuple[Path, object],
+) -> None:
+    root, _ = two_file_graph
+    engine = CodeGenomeEngine(
+        CodeGenomeConfig(
+            workspace=root,
+            export_formats=("json",),
+            snapshot_retention_count=2,
+        )
+    )
+    try:
+        snapshot_ids = [engine.build(full=True).snapshot_id for _ in range(3)]
+        retained = engine.timeline.list_snapshots()
+
+        assert [item.snapshot_id for item in retained] == snapshot_ids[1:]
+        assert all(
+            engine.timeline.gdr_store.has_snapshot(snapshot_id)
+            and engine.timeline.metrics_store.has_snapshot(snapshot_id)
+            for snapshot_id in snapshot_ids[1:]
+            if snapshot_id is not None
+        )
+    finally:
+        engine.close()

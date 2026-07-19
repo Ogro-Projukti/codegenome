@@ -6,12 +6,10 @@ from tree_sitter import Node
 
 from codegenome.parser.common import (
     append_symbol,
-    go_type_kind,
     line_number,
     node_text,
     python_class_kind,
     record_call,
-    typescript_class_kind,
 )
 from codegenome.parser.types import ParsedInheritance, ParsedImport, ParseResult
 

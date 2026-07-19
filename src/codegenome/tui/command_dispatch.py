@@ -9,7 +9,6 @@ from codegenome.service import CodeGenomeService
 from codegenome.tui.constants import LogChannel
 from codegenome.tui.memory import (
     MemoryModeSettings,
-    analyze_mode_cli_args,
     evolve_mode_cli_args,
     mcp_mode_cli_args,
 )

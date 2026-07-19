@@ -34,7 +34,9 @@ The **default** code paths (`analyze`, `mcp-start`, `evolve` without flags) stil
 | **Precomputed global metrics** | `snapshot_metrics.py` | Full-graph `IntelligenceReport` + betweenness stored per snapshot; copied on patch |
 | **Bounded engine** | `core.py` — `CodeGenomeConfig.memory_bounded` | Startup evicts graph; surgical/incremental updates use change scope + working set |
 | **Bounded MCP** | `graph_store.py` — `memory_bounded=True` | Local queries load subgraphs; global tools read stored metrics |
+| **Bounded genome REST** | `genome_sql_provider.py`, `graph_store.py` | `/genome` streams SQL aggregates; module routes load only the selected module |
 | **Bounded exports** | `timeline.export_snapshot_json/html()` | HTML/JSON from SQLite rows without `load_snapshot()` |
+| **Snapshot lifecycle** | `timeline.prune_snapshots()`, `codegenome db-maintain` | Transactional count/age retention plus optional SQLite compaction |
 | **TUI controls** | `tui.py` — Memory Setup Console | Per-service toggles and presets (All Bounded, Evolve Only, MCP Only) |
 
 ---
@@ -84,6 +86,7 @@ flowchart TB
 | Build / evolve graph | Full project graph | Working set only (≤ `max_working_files` files) |
 | GDR | Full in-memory maps | `GDRBackedRegistry` — empty start, hydrate on scope |
 | MCP `GraphStore` | Full graph after `open()` | Empty graph + snapshot counts; load per query |
+| Genome REST routes | Resident full graph | SQL overview + requested module slice only |
 | Global intelligence | Recomputed on full graph | Read from `snapshot_metrics` (or opt-in full reload) |
 
 ---
@@ -104,6 +107,9 @@ codegenome mcp-start --memory-bounded .
 
 # MCP global tools: use stored metrics (default) or force live full-graph analysis
 codegenome mcp-start --memory-bounded --full-analysis-on-demand
+
+# Retention is automatic (100 snapshots by default); compact in a maintenance window
+codegenome db-maintain --retain-snapshots 100 --compact --path .
 ```
 
 ### TUI
@@ -258,7 +264,7 @@ These are **not** regressions; they are deliberate trade-offs or follow-up work:
 
 5. **Full-analysis-on-demand cost** — `--full-analysis-on-demand` temporarily loads the entire graph for live recomputation. Use stored metrics when possible.
 
-6. **GDR storage per snapshot** — Phase 1 copies full GDR per snapshot (with patch optimization for surgical rows). Cross-snapshot GDR deduplication is not implemented.
+6. **GDR storage per retained snapshot** — Each retained snapshot owns a full GDR view (with patch optimization for surgical writes). Cross-snapshot GDR deduplication is not implemented, but automatic count/age retention bounds history growth.
 
 7. **Paper / top-of-spec doc lag** — [`memory-bounded-storage.md`](memory-bounded-storage.md) still opens with historical “implementation is future work” language in its introduction; this document is the authoritative **current product** description.
 
@@ -281,14 +287,15 @@ For a repository that should run bounded end-to-end:
 |------|----------------|
 | `src/codegenome/gdr_store.py` | GDR schema, persist/hydrate/patch, `GDRBackedRegistry` |
 | `src/codegenome/snapshot_metrics.py` | Global metrics persistence |
-| `src/codegenome/timeline.py` | Snapshots, partial load, patch, SQL exports |
+| `src/codegenome/timeline.py` | Snapshots, partial load, patch, SQL exports, retention/compaction |
 | `src/codegenome/working_set.py` | LRU working-set graph |
 | `src/codegenome/graph_loader.py` | Node/file path helpers for partial load |
 | `src/codegenome/core.py` | Engine orchestration, bounded surgical/incremental paths |
 | `src/codegenome/graph_store.py` | Bounded MCP query layer |
+| `src/codegenome/serializers/genome_sql_provider.py` | SQL-projected bounded REST payloads |
 | `src/codegenome/intelligence.py` | Analysis + `report_to_dict` / `report_from_dict` |
 | `src/codegenome/tui.py` | Memory Setup Console |
-| `src/codegenome/cli.py` | `--memory-bounded`, `--max-working-files` flags |
+| `src/codegenome/cli.py` | Bounded-memory, retention, and database-maintenance controls |
 
 ---
 

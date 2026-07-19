@@ -33,6 +33,14 @@ class CodeGenomeConfig:
     live_graph_poll_seconds: float = 30.0
     memory_bounded: bool = False
     max_working_files: int = 64
+    snapshot_retention_count: int | None = 100
+    snapshot_retention_days: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.snapshot_retention_count is not None and self.snapshot_retention_count < 1:
+            raise ValueError("snapshot_retention_count must be at least 1")
+        if self.snapshot_retention_days is not None and self.snapshot_retention_days < 0:
+            raise ValueError("snapshot_retention_days must be non-negative")
 
 
 @dataclass

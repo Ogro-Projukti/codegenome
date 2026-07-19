@@ -8,6 +8,7 @@ import pytest
 
 from codegenome.builder import GraphBuilder
 from codegenome.core import CodeGenomeConfig, CodeGenomeEngine
+from codegenome.graph_api import create_graph
 from codegenome.parser import SourceParser
 from codegenome.registry import GlobalDependencyRegistry, RegistryEntry
 from codegenome.scanner import WorkspaceScanner
@@ -231,8 +232,9 @@ def test_persist_snapshot_uses_canonical_providers_when_files_disagree(
     registry.providers["helper"] = "beta.py"
 
     store = timeline.gdr_store
-    store.persist_snapshot(1, registry)
-    assert store.get_provider(1, "helper") == "beta.py"
+    snapshot_id = timeline.record_snapshot(create_graph("igraph"))
+    store.persist_snapshot(snapshot_id, registry)
+    assert store.get_provider(snapshot_id, "helper") == "beta.py"
     timeline.close()
 
 

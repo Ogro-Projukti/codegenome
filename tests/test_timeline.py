@@ -13,6 +13,8 @@ from codegenome.builder import GraphBuilder, file_node_id
 from codegenome.graph_api import Graph, create_graph
 from codegenome.parser import SourceParser
 from codegenome.scanner import WorkspaceScanner
+from codegenome.intelligence import IntelligenceReport
+from codegenome.snapshot_metrics import SnapshotMetrics
 from codegenome.timeline import GraphTimeline
 
 
@@ -187,5 +189,80 @@ def test_legacy_edge_schema_migrates_without_false_counts(tmp_path: Path) -> Non
         ]
         assert primary_key == ["snapshot_id", "source_id", "target_id", "edge_key"]
         assert timeline.list_snapshots()[0].edge_count == 1
+    finally:
+        timeline.close()
+
+
+def test_snapshot_retention_deletes_dependent_rows_transactionally(
+    tmp_path: Path,
+    sample_graph: Graph,
+) -> None:
+    timeline = GraphTimeline(tmp_path / "timeline.db")
+    snapshot_ids: list[int] = []
+    try:
+        for index in range(4):
+            snapshot_id = timeline.record_snapshot(
+                sample_graph,
+                label=f"v{index + 1}",
+                created_at=float(index + 1),
+            )
+            snapshot_ids.append(snapshot_id)
+            timeline.metrics_store.persist_snapshot(
+                snapshot_id,
+                SnapshotMetrics(report=IntelligenceReport()),
+            )
+            timeline.connection.execute(
+                """
+                INSERT INTO gdr_files
+                    (snapshot_id, file_path, provides_json, consumes_json, updated_at)
+                VALUES (?, 'alpha.py', '[]', '[]', ?)
+                """,
+                (snapshot_id, float(index + 1)),
+            )
+            timeline.connection.commit()
+
+        result = timeline.prune_snapshots(max_snapshots=2)
+
+        assert result.deleted_snapshot_ids == tuple(snapshot_ids[:2])
+        assert result.snapshots_before == 4
+        assert result.snapshots_after == 2
+        assert [item.snapshot_id for item in timeline.list_snapshots()] == snapshot_ids[2:]
+        assert timeline.connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        for table in (
+            "graph_nodes",
+            "graph_edges",
+            "graph_node_files",
+            "gdr_files",
+            "snapshot_metrics",
+        ):
+            count = timeline.connection.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE snapshot_id IN (?, ?)",
+                snapshot_ids[:2],
+            ).fetchone()[0]
+            assert count == 0
+    finally:
+        timeline.close()
+
+
+def test_snapshot_retention_honors_age_protection_and_compacts(
+    tmp_path: Path,
+    sample_graph: Graph,
+) -> None:
+    timeline = GraphTimeline(tmp_path / "timeline.db")
+    try:
+        first = timeline.record_snapshot(sample_graph, created_at=10.0)
+        second = timeline.record_snapshot(sample_graph, created_at=20.0)
+        latest = timeline.record_snapshot(sample_graph, created_at=90.0)
+
+        result = timeline.prune_snapshots(
+            max_age_seconds=50.0,
+            protected_snapshot_ids={first},
+            now=100.0,
+            compact=True,
+        )
+
+        assert result.deleted_snapshot_ids == (second,)
+        assert result.compacted is True
+        assert [item.snapshot_id for item in timeline.list_snapshots()] == [first, latest]
     finally:
         timeline.close()

@@ -9,7 +9,9 @@ from pathlib import Path
 
 from codegenome.graph_api import create_graph
 import pytest
+from click.testing import CliRunner
 
+from codegenome.cli import cli
 from codegenome.timeline import GraphTimeline
 
 
@@ -87,3 +89,30 @@ def test_dump_changes_cli(sample_db: Path) -> None:
     assert payload["snapshot_from"] == 1
     assert payload["snapshot_to"] == 2
     assert "file:beta.py" in payload["added_nodes"]
+
+
+def test_db_maintain_cli_prunes_snapshot_history(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    genome_dir = workspace / ".genome"
+    genome_dir.mkdir(parents=True)
+    timeline = GraphTimeline(genome_dir / "codegenome.db")
+    graph = create_graph("igraph")
+    graph.add_node("file:alpha.py", node_type="file", file_path="alpha.py")
+    try:
+        for index in range(3):
+            timeline.record_snapshot(graph, label=f"v{index + 1}")
+    finally:
+        timeline.close()
+
+    result = CliRunner().invoke(
+        cli,
+        ["db-maintain", "--path", str(workspace), "--retain-snapshots", "1"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Snapshots: 3 -> 1" in result.output
+    timeline = GraphTimeline(genome_dir / "codegenome.db")
+    try:
+        assert len(timeline.list_snapshots()) == 1
+    finally:
+        timeline.close()

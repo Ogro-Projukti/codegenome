@@ -90,6 +90,7 @@ class BuildService:
         self._persistence.persist_gdr(snapshot_id)
         self._persistence.persist_snapshot_metrics(snapshot_id, graph, intel_report)
         ctx.active_snapshot_id = snapshot_id
+        self._persistence.enforce_snapshot_retention()
         if ctx.config.memory_bounded:
             self._persistence.enter_memory_bounded_mode(snapshot_id)
         export_paths = self._export.run_exports(exporter)
@@ -202,6 +203,7 @@ class BuildService:
                 graph, label=f"surgical_{event_type}"
             )
             analysis_graph = graph
+        ctx.active_snapshot_id = snapshot_id
 
         self._persistence.persist_gdr(
             snapshot_id,
@@ -210,6 +212,7 @@ class BuildService:
         )
 
         if use_bounded_patch:
+            self._persistence.enforce_snapshot_retention()
             report = self._persistence.load_stored_report(snapshot_id) or IntelligenceReport()
             export_paths = self._export.run_exports_bounded(
                 snapshot_id, analysis_graph, report
@@ -226,6 +229,8 @@ class BuildService:
         intelligence = GraphIntelligence(analysis_graph, registry=ctx.registry)
         intelligence.annotate_coupling_metrics()
         report = intelligence.analyze()
+        self._persistence.persist_snapshot_metrics(snapshot_id, analysis_graph, report)
+        self._persistence.enforce_snapshot_retention()
 
         exporter = GraphExporter(
             analysis_graph,
@@ -304,6 +309,7 @@ class BuildService:
             base_snapshot_id=base_snapshot_id,
             changed_files=changed_files,
         )
+        self._persistence.enforce_snapshot_retention()
 
         intel_report = self._persistence.load_stored_report(snapshot_id) or IntelligenceReport()
 

@@ -50,6 +50,8 @@ class LiveSessionConfig:
     lan: bool = False
     memory_bounded: bool = False
     max_working_files: int = 64
+    snapshot_retention_count: int | None = 100
+    snapshot_retention_days: float | None = None
     http_port: int = DEFAULT_HTTP_PORT
     ws_port: int = DEFAULT_WS_PORT
 
@@ -199,6 +201,8 @@ class LiveSession:
                 export_formats=("json", "html"),
                 memory_bounded=config.memory_bounded,
                 max_working_files=max(1, config.max_working_files),
+                snapshot_retention_count=config.snapshot_retention_count,
+                snapshot_retention_days=config.snapshot_retention_days,
             )
         )
         self._live_server = None
